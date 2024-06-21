@@ -16,4 +16,6 @@ pub enum Error {
     NotAligned,
     #[error("begin address {0} is larger than end address {1}")]
     BeginLargerThanEnd(u64, u64),
+    #[error("invalid size")]
+    InvalidSize,
 }
