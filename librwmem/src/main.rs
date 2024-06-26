@@ -38,6 +38,51 @@ pub struct Device {
     fd: RawFd,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemoryRegion {
+    CAlloc,
+    CBss,
+    CData,
+    CHeap,
+    JavaHeap,
+    AAnonymous,
+    CodeSystem,
+    Stack,
+    Ashmem,
+}
+
+impl MemoryRegion {
+    fn from_str(s: &str) -> Option<MemoryRegion> {
+        match s {
+            "C_ALLOC" => Some(MemoryRegion::CAlloc),
+            "C_BSS" => Some(MemoryRegion::CBss),
+            "C_DATA" => Some(MemoryRegion::CData),
+            "C_HEAP" => Some(MemoryRegion::CHeap),
+            "JAVA_HEAP" => Some(MemoryRegion::JavaHeap),
+            "A_ANONYMOUS" => Some(MemoryRegion::AAnonymous),
+            "CODE_SYSTEM" => Some(MemoryRegion::CodeSystem),
+            "STACK" => Some(MemoryRegion::Stack),
+            "ASHMEM" => Some(MemoryRegion::Ashmem),
+            _ => None,
+        }
+    }
+
+    fn matches(&self, entry: &MapsEntry) -> bool {
+        match self {
+            MemoryRegion::CAlloc => entry.name.contains("[anon:libc_malloc]"),
+            MemoryRegion::CBss => entry.name.contains("[anon:.bss]"),
+            MemoryRegion::CData => entry.name.contains("/data/app/"),
+            MemoryRegion::CHeap => entry.name.contains("[heap]"),
+            MemoryRegion::JavaHeap => entry.name.contains("/dev/ashmem"),
+            MemoryRegion::AAnonymous => entry.name.contains("\x00"),
+            MemoryRegion::CodeSystem => entry.name.contains("/system"),
+            MemoryRegion::Stack => entry.name.contains("[stack]"),
+            MemoryRegion::Ashmem => entry.name.contains("/dev/ashmem/dalvik"),
+        }
+    }
+}
+
+
 impl Device {
     /// Create a new device. The default path is `DEFAULT_DRIVER_PATH`.
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -263,10 +308,10 @@ impl Device {
         f32::from_ne_bytes(buf[0..4].try_into().unwrap())
     }
 
-    fn search_value_int(&self, pid: i32, value: i32, package_name: &str) -> Result<Vec<u64>> {
+    fn search_value_int(&self, pid: i32, value: i32, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
         let maps = self.get_mem_map(pid, false)?
             .into_iter()
-            .filter(|map| map.name.contains(package_name))
+            .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
         let mut addresses = Vec::new();
 
@@ -288,10 +333,10 @@ impl Device {
         Ok(addresses)
     }
 
-    fn search_value_long(&self, pid: i32, value: i64, package_name: &str) -> Result<Vec<u64>> {
+    fn search_value_long(&self, pid: i32, value: i64, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
         let maps = self.get_mem_map(pid, false)?
             .into_iter()
-            .filter(|map| map.name.contains(package_name))
+            .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
         let mut addresses = Vec::new();
 
@@ -299,24 +344,24 @@ impl Device {
             if map.read_permission {
                 let mut addr = map.start;
                 while addr < map.end {
-                    let mut buf = [0u8; std::mem::size_of::<i32>()];
+                    let mut buf = [0u8; std::mem::size_of::<i64>()];
                     if self.read_mem(pid, addr, &mut buf).is_ok() {
                         let read_value = Device::extract_i64(&buf);
                         if read_value == value {
                             addresses.push(addr);
                         }
                     }
-                    addr += std::mem::size_of::<i32>() as u64;
+                    addr += std::mem::size_of::<i64>() as u64;
                 }
             }
         }
         Ok(addresses)
     }
 
-    fn search_value_float(&self, pid: i32, value: f32, package_name: &str) -> Result<Vec<u64>> {
+    fn search_value_float(&self, pid: i32, value: f32, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
         let maps = self.get_mem_map(pid, false)?
             .into_iter()
-            .filter(|map| map.name.contains(package_name))
+            .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
         let mut addresses = Vec::new();
 
@@ -324,14 +369,14 @@ impl Device {
             if map.read_permission {
                 let mut addr = map.start;
                 while addr < map.end {
-                    let mut buf = [0u8; std::mem::size_of::<i32>()];
+                    let mut buf = [0u8; std::mem::size_of::<f32>()];
                     if self.read_mem(pid, addr, &mut buf).is_ok() {
                         let read_value = Device::extract_f32(&buf);
                         if read_value == value {
                             addresses.push(addr);
                         }
                     }
-                    addr += std::mem::size_of::<i32>() as u64;
+                    addr += std::mem::size_of::<f32>() as u64;
                 }
             }
         }
@@ -381,8 +426,8 @@ enum Commands {
         pid: i32,
         #[arg(help = "Integer value to search")]
         value: i32,
-        #[arg(help = "Package name to search")]
-        packagename: Box<str>,
+        #[arg(help = "Memory regions to search (e.g., C_ALLOC,C_BSS, etc.)")]
+        regions: String,
         #[arg(help = "Path to save output")]
         path: String,
     },
@@ -391,8 +436,8 @@ enum Commands {
         pid: i32,
         #[arg(help = "Long value to search")]
         value: i64,
-        #[arg(help = "Package name to search")]
-        packagename: Box<str>,
+        #[arg(help = "Memory regions to search (e.g., C_ALLOC,C_BSS, etc.)")]
+        regions: String,
         #[arg(help = "Path to save output")]
         path: String,
     },
@@ -401,8 +446,8 @@ enum Commands {
         pid: i32,
         #[arg(help = "Float value to search")]
         value: f32,
-        #[arg(help = "Package name to search")]
-        packagename: Box<str>,
+        #[arg(help = "Memory regions to search (e.g., C_ALLOC,C_BSS, etc.)")]
+        regions: String,
         #[arg(help = "Path to save output")]
         path: String,
     },
@@ -502,8 +547,11 @@ fn main() {
                 println!("{:?}", map);
             }
         }
-        Commands::SearchInt { pid, value, packagename, path } => {
-            let addresses = match device.search_value_int(pid, value, &packagename) {
+        Commands::SearchInt { pid, value, regions, path } => {
+            let regions = regions.split(',')
+                .filter_map(|s| MemoryRegion::from_str(s))
+                .collect::<Vec<_>>();
+            let addresses = match device.search_value_int(pid, value, regions) {
                 Ok(addrs) => addrs,
                 Err(e) => {
                     eprintln!("Failed to search for int value: {:?}", e);
@@ -525,8 +573,11 @@ fn main() {
             }
             println!("Found int value at addresses: {:x?}", addresses);
         }
-        Commands::SearchLong { pid, value, packagename, path } => {
-            let addresses = match device.search_value_long(pid, value, &packagename) {
+        Commands::SearchLong { pid, value, regions, path } => {
+            let regions = regions.split(',')
+                .filter_map(|s| MemoryRegion::from_str(s))
+                .collect::<Vec<_>>();
+            let addresses = match device.search_value_long(pid, value, regions) {
                 Ok(addrs) => addrs,
                 Err(e) => {
                     eprintln!("Failed to search for long value: {:?}", e);
@@ -548,8 +599,11 @@ fn main() {
             }
             println!("Found long value at addresses: {:x?}", addresses);
         }
-        Commands::SearchFloat { pid, value, packagename, path } => {
-            let addresses = match device.search_value_float(pid, value, &packagename) {
+        Commands::SearchFloat { pid, value, regions, path } => {
+            let regions = regions.split(',')
+                .filter_map(|s| MemoryRegion::from_str(s))
+                .collect::<Vec<_>>();
+            let addresses = match device.search_value_float(pid, value, regions) {
                 Ok(addrs) => addrs,
                 Err(e) => {
                     eprintln!("Failed to search for float value: {:?}", e);
