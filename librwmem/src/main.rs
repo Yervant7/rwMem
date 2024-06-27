@@ -74,7 +74,7 @@ impl MemoryRegion {
             MemoryRegion::CData => entry.name.contains("/data/app/"),
             MemoryRegion::CHeap => entry.name.contains("[heap]"),
             MemoryRegion::JavaHeap => entry.name.contains("/dev/ashmem"),
-            MemoryRegion::AAnonymous => entry.name.contains("\x00"),
+            MemoryRegion::AAnonymous => entry.name.is_empty(),
             MemoryRegion::CodeSystem => entry.name.contains("/system"),
             MemoryRegion::Stack => entry.name.contains("[stack]"),
             MemoryRegion::Ashmem => entry.name.contains("/dev/ashmem/dalvik"),
@@ -382,6 +382,14 @@ impl Device {
         }
         Ok(addresses)
     }
+
+    fn get_maps(&self, pid: i32, regions: Vec<MemoryRegion>) -> Result<Vec<MapsEntry>> {
+        let maps = self.get_mem_map(pid, false)?
+            .into_iter()
+            .filter(|map| regions.iter().any(|region| region.matches(map)))
+            .collect::<Vec<_>>();
+        Ok(maps)
+    }
 }
 
 impl Drop for Device {
@@ -420,6 +428,8 @@ enum Commands {
     Maps {
         #[arg(help = "Process ID")]
         pid: i32,
+        #[arg(help = "Memory regions to get map (e.g., C_ALLOC,C_BSS, etc.)")]
+        regions: String,
     },
     SearchInt {
         #[arg(help = "Process ID")]
@@ -535,8 +545,11 @@ fn main() {
                 Err(e) => eprintln!("Failed to write memory: {:?}", e),
             }
         }
-        Commands::Maps { pid } => {
-            let maps = match device.get_mem_map(pid, false) {
+        Commands::Maps { pid, regions } => {
+            let regions = regions.split(',')
+                .filter_map(|s| MemoryRegion::from_str(s))
+                .collect::<Vec<_>>();
+            let maps = match device.get_maps(pid, regions) {
                 Ok(maps) => maps,
                 Err(e) => {
                     eprintln!("Failed to get memory maps: {:?}", e);
