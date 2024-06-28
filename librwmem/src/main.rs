@@ -399,7 +399,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.1.0", author = "yervant7 and ri-char", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.1.2", author = "yervant7 and ri-char", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -417,13 +417,29 @@ enum Commands {
         #[arg(help = "Data type: int, long, float")]
         data_type: String,
     },
-    Write {
+    WriteInt {
         #[arg(help = "Process ID")]
         pid: i32,
         #[arg(help = "Memory address")]
-        addr: u64,
+        addr: String,
         #[arg(help = "Value to write")]
-        value: u64,
+        value: i32,
+    },
+    WriteLong {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Memory address")]
+        addr: String,
+        #[arg(help = "Value to write")]
+        value: i64,
+    },
+    WriteFloat {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Memory address")]
+        addr: String,
+        #[arg(help = "Value to write")]
+        value: f32,
     },
     Maps {
         #[arg(help = "Process ID")]
@@ -538,10 +554,45 @@ fn main() {
                 }
             }
         }
-        Commands::Write { pid, addr, value } => {
+        Commands::WriteInt { pid, addr, value } => {
+            let addr = match u64::from_str_radix(&addr.trim_start_matches("0x"), 16) {
+                Ok(val) => val,
+                Err(_) => {
+                    eprintln!("Invalid hexadecimal address");
+                    return;
+                }
+            };
             let buf = value.to_ne_bytes();
             match device.write_mem(pid, addr, &buf) {
-                Ok(_) => println!("Wrote value: {:#x} to address: {:#x}", value, addr),
+                Ok(_) => println!("Wrote value: {} to address: {:#x}", value, addr),
+                Err(e) => eprintln!("Failed to write memory: {:?}", e),
+            }
+        }
+        Commands::WriteLong { pid, addr, value } => {
+            let addr = match u64::from_str_radix(&addr.trim_start_matches("0x"), 16) {
+                Ok(val) => val,
+                Err(_) => {
+                    eprintln!("Invalid hexadecimal address");
+                    return;
+                }
+            };
+            let buf = value.to_ne_bytes();
+            match device.write_mem(pid, addr, &buf) {
+                Ok(_) => println!("Wrote value: {} to address: {:#x}", value, addr),
+                Err(e) => eprintln!("Failed to write memory: {:?}", e),
+            }
+        }
+        Commands::WriteFloat { pid, addr, value } => {
+            let addr = match u64::from_str_radix(&addr.trim_start_matches("0x"), 16) {
+                Ok(val) => val,
+                Err(_) => {
+                    eprintln!("Invalid hexadecimal address");
+                    return;
+                }
+            };
+            let buf = value.to_ne_bytes();
+            match device.write_mem(pid, addr, &buf) {
+                Ok(_) => println!("Wrote value: {} to address: {:#x}", value, addr),
                 Err(e) => eprintln!("Failed to write memory: {:?}", e),
             }
         }
