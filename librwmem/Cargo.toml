@@ -1,6 +1,6 @@
 [package]
 name = "RWMem"
-version = "0.1.2"
+version = "0.1.5"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -12,3 +12,4 @@ byteorder = "1.5"
 bitvec = "1"
 thiserror = "1"
 clap = { version = "4.5.4", features = ["derive"] }
+rayon = "1.10.0"

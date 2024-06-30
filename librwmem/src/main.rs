@@ -10,6 +10,7 @@ use nix::request_code_readwrite;
 use nix::fcntl;
 use nix::sys::stat;
 use nix::errno::Errno;
+use rayon::prelude::*;
 
 mod errors;
 
@@ -313,23 +314,26 @@ impl Device {
             .into_iter()
             .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
-        let mut addresses = Vec::new();
 
-        for map in maps {
-            if map.read_permission {
+        let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
+            .flat_map(|map| {
+                let mut local_addresses = Vec::new();
                 let mut addr = map.start;
                 while addr < map.end {
                     let mut buf = [0u8; std::mem::size_of::<i32>()];
                     if self.read_mem(pid, addr, &mut buf).is_ok() {
                         let read_value = Device::extract_i32(&buf);
                         if read_value == value {
-                            addresses.push(addr);
+                            local_addresses.push(addr);
                         }
                     }
                     addr += std::mem::size_of::<i32>() as u64;
                 }
-            }
-        }
+                local_addresses
+            })
+            .collect();
+
         Ok(addresses)
     }
 
@@ -338,23 +342,26 @@ impl Device {
             .into_iter()
             .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
-        let mut addresses = Vec::new();
 
-        for map in maps {
-            if map.read_permission {
+        let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
+            .flat_map(|map| {
+                let mut local_addresses = Vec::new();
                 let mut addr = map.start;
                 while addr < map.end {
                     let mut buf = [0u8; std::mem::size_of::<i64>()];
                     if self.read_mem(pid, addr, &mut buf).is_ok() {
                         let read_value = Device::extract_i64(&buf);
                         if read_value == value {
-                            addresses.push(addr);
+                            local_addresses.push(addr);
                         }
                     }
                     addr += std::mem::size_of::<i64>() as u64;
                 }
-            }
-        }
+                local_addresses
+            })
+            .collect();
+
         Ok(addresses)
     }
 
@@ -363,23 +370,26 @@ impl Device {
             .into_iter()
             .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
-        let mut addresses = Vec::new();
 
-        for map in maps {
-            if map.read_permission {
+        let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
+            .flat_map(|map| {
+                let mut local_addresses = Vec::new();
                 let mut addr = map.start;
                 while addr < map.end {
                     let mut buf = [0u8; std::mem::size_of::<f32>()];
                     if self.read_mem(pid, addr, &mut buf).is_ok() {
                         let read_value = Device::extract_f32(&buf);
                         if read_value == value {
-                            addresses.push(addr);
+                            local_addresses.push(addr);
                         }
                     }
                     addr += std::mem::size_of::<f32>() as u64;
                 }
-            }
-        }
+                local_addresses
+            })
+            .collect();
+
         Ok(addresses)
     }
 
@@ -399,7 +409,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.1.2", author = "yervant7 and ri-char", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.1.5", author = "yervant7 and ri-char", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -635,7 +645,7 @@ fn main() {
                     return;
                 }
             }
-            println!("Found int value at addresses: {:x?}", addresses);
+            println!("Search finished check file: {}", path);
         }
         Commands::SearchLong { pid, value, regions, path } => {
             let regions = regions.split(',')
@@ -661,7 +671,7 @@ fn main() {
                     return;
                 }
             }
-            println!("Found long value at addresses: {:x?}", addresses);
+            println!("Search finished check file: {}", path);
         }
         Commands::SearchFloat { pid, value, regions, path } => {
             let regions = regions.split(',')
@@ -687,9 +697,9 @@ fn main() {
                     return;
                 }
             }
-            println!("Found float value at addresses: {:x?}", addresses);
+            println!("Search finished check file: {}", path);
         }
-        Commands::FilterInt { pid, expected_value, filename,  path} => {
+        Commands::FilterInt { pid, expected_value, filename, path } => {
             let file = match File::open(&filename) {
                 Ok(f) => f,
                 Err(e) => {
@@ -705,32 +715,29 @@ fn main() {
                 }
             };
             let reader = BufReader::new(file);
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => {
-                        let address = match u64::from_str_radix(&l.trim_start_matches("0x"), 16) {
-                            Ok(addr) => addr,
-                            Err(e) => {
-                                eprintln!("Failed to parse address: {:?}", e);
-                                continue;
-                            }
-                        };
-                        let mut buf = [0u8; 4];
-                        if device.read_mem(pid, address, &mut buf).is_err() {
-                            eprintln!("Failed to read memory at address: {:#x}", address);
-                            continue;
-                        }
+            let lines: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
+
+            let addresses: Vec<u64> = lines.par_iter()
+                .filter_map(|line| {
+                    let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
+                    let mut buf = [0u8; 4];
+                    if device.read_mem(pid, address, &mut buf).is_ok() {
                         let value = Device::extract_i32(&buf);
                         if value == expected_value {
-                            writeln!(file2, "{:#x}", address).expect("Failed to write to file");
-                            println!("Found int value at address: {:x?}", address);
+                            return Some(address);
                         }
                     }
-                    Err(e) => eprintln!("Failed to read line: {:?}", e),
-                }
+                    None
+                })
+                .collect();
+
+            for address in addresses {
+                writeln!(file2, "{:#x}", address).expect("Failed to write to file");
             }
+            println!("Filter finished check file: {}", path);
         }
-        Commands::FilterLong { pid, expected_value, filename, path} => {
+
+        Commands::FilterLong { pid, expected_value, filename, path } => {
             let file = match File::open(&filename) {
                 Ok(f) => f,
                 Err(e) => {
@@ -746,31 +753,28 @@ fn main() {
                 }
             };
             let reader = BufReader::new(file);
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => {
-                        let address = match u64::from_str_radix(&l.trim_start_matches("0x"), 16) {
-                            Ok(addr) => addr,
-                            Err(e) => {
-                                eprintln!("Failed to parse address: {:?}", e);
-                                continue;
-                            }
-                        };
-                        let mut buf = [0u8; 8];
-                        if device.read_mem(pid, address, &mut buf).is_err() {
-                            eprintln!("Failed to read memory at address: {:#x}", address);
-                            continue;
-                        }
+            let lines: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
+
+            let addresses: Vec<u64> = lines.par_iter()
+                .filter_map(|line| {
+                    let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
+                    let mut buf = [0u8; 8];
+                    if device.read_mem(pid, address, &mut buf).is_ok() {
                         let value = Device::extract_i64(&buf);
                         if value == expected_value {
-                            writeln!(file2, "{:#x}", address).expect("Failed to write to file");
-                            println!("Found long value at address: {:x?}", address);
+                            return Some(address);
                         }
                     }
-                    Err(e) => eprintln!("Failed to read line: {:?}", e),
-                }
+                    None
+                })
+                .collect();
+
+            for address in addresses {
+                writeln!(file2, "{:#x}", address).expect("Failed to write to file");
             }
+            println!("Filter finished check file: {}", path);
         }
+
         Commands::FilterFloat { pid, expected_value, filename, path } => {
             let file = match File::open(&filename) {
                 Ok(f) => f,
@@ -787,30 +791,26 @@ fn main() {
                 }
             };
             let reader = BufReader::new(file);
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => {
-                        let address = match u64::from_str_radix(&l.trim_start_matches("0x"), 16) {
-                            Ok(addr) => addr,
-                            Err(e) => {
-                                eprintln!("Failed to parse address: {:?}", e);
-                                continue;
-                            }
-                        };
-                        let mut buf = [0u8; 4];
-                        if device.read_mem(pid, address, &mut buf).is_err() {
-                            eprintln!("Failed to read memory at address: {:#x}", address);
-                            continue;
-                        }
+            let lines: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
+
+            let addresses: Vec<u64> = lines.par_iter()
+                .filter_map(|line| {
+                    let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
+                    let mut buf = [0u8; 4];
+                    if device.read_mem(pid, address, &mut buf).is_ok() {
                         let value = Device::extract_f32(&buf);
                         if value == expected_value {
-                            writeln!(file2, "{:#x}", address).expect("Failed to write to file");
-                            println!("Found float value at address: {:x?}", address);
+                            return Some(address);
                         }
                     }
-                    Err(e) => eprintln!("Failed to read line: {:?}", e),
-                }
+                    None
+                })
+                .collect();
+
+            for address in addresses {
+                writeln!(file2, "{:#x}", address).expect("Failed to write to file");
             }
+            println!("Filter finished check file: {}", path);
         }
     }
 }
