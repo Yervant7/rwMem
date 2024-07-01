@@ -18,4 +18,6 @@ pub enum Error {
     BeginLargerThanEnd(u64, u64),
     #[error("invalid size")]
     InvalidSize,
+    #[error("Capstone error: ")]
+    CapstoneError(String),
 }

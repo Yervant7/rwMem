@@ -11,6 +11,7 @@ use nix::fcntl;
 use nix::sys::stat;
 use nix::errno::Errno;
 use rayon::prelude::*;
+use capstone::prelude::*;
 
 mod errors;
 
@@ -316,6 +317,7 @@ impl Device {
             .collect::<Vec<_>>();
 
         let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
             .flat_map(|map| {
                 let mut local_addresses = Vec::new();
                 let mut addr = map.start;
@@ -343,6 +345,7 @@ impl Device {
             .collect::<Vec<_>>();
 
         let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
             .flat_map(|map| {
                 let mut local_addresses = Vec::new();
                 let mut addr = map.start;
@@ -370,6 +373,7 @@ impl Device {
             .collect::<Vec<_>>();
 
         let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
             .flat_map(|map| {
                 let mut local_addresses = Vec::new();
                 let mut addr = map.start;
@@ -397,6 +401,114 @@ impl Device {
             .collect::<Vec<_>>();
         Ok(maps)
     }
+
+    pub fn disassemble_64(&self, pid: i32, addr: u64) -> Result<Vec<String>> {
+        let mut buffers = Vec::new();
+        let mut buf = vec![0u8; 8];
+
+        for offset in (1..=1000).rev() {
+            let current_addr = addr.wrapping_sub(offset * 8);
+            match self.read_mem(pid, current_addr, &mut buf) {
+                Ok(_) => buffers.push((current_addr, buf.clone())),
+                Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+            }
+        }
+
+        match self.read_mem(pid, addr, &mut buf) {
+            Ok(_) => buffers.push((addr, buf.clone())),
+            Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+        }
+
+        for offset in 1..=1000 {
+            let current_addr = addr.wrapping_add(offset * 8);
+            match self.read_mem(pid, current_addr, &mut buf) {
+                Ok(_) => buffers.push((current_addr, buf.clone())),
+                Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+            }
+        }
+
+        buffers.sort_by_key(|&(addr, _)| addr);
+
+        let mut big_buffer = Vec::new();
+        let mut base_addr = 0;
+        if let Some((first_addr, _)) = buffers.first() {
+            base_addr = *first_addr;
+        }
+
+        for (_, buf) in buffers {
+            big_buffer.extend_from_slice(&buf);
+        }
+
+        let cs = Capstone::new()
+            .arm64()
+            .mode(arch::arm64::ArchMode::Arm)
+            .build()
+            .map_err(|e| errors::Error::CapstoneError(e.to_string()))?;
+
+        let insns = cs.disasm_all(&big_buffer, base_addr)
+            .map_err(|e| errors::Error::CapstoneError(e.to_string()))?;
+
+        let mut instructions = Vec::new();
+        for i in insns.iter() {
+            instructions.push(format!("{}", i));
+        }
+
+        Ok(instructions)
+    }
+
+    pub fn disassemble_32(&self, pid: i32, addr: u64) -> Result<Vec<String>> {
+        let mut buffers = Vec::new();
+        let mut buf = vec![0u8; 4];
+
+        for offset in (1..=1000).rev() {
+            let current_addr = addr.wrapping_sub(offset * 4);
+            match self.read_mem(pid, current_addr, &mut buf) {
+                Ok(_) => buffers.push((current_addr, buf.clone())),
+                Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+            }
+        }
+
+        match self.read_mem(pid, addr, &mut buf) {
+            Ok(_) => buffers.push((addr, buf.clone())),
+            Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+        }
+
+        for offset in 1..=1000 {
+            let current_addr = addr.wrapping_add(offset * 4);
+            match self.read_mem(pid, current_addr, &mut buf) {
+                Ok(_) => buffers.push((current_addr, buf.clone())),
+                Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+            }
+        }
+
+        buffers.sort_by_key(|&(addr, _)| addr);
+
+        let mut big_buffer = Vec::new();
+        let mut base_addr = 0;
+        if let Some((first_addr, _)) = buffers.first() {
+            base_addr = *first_addr;
+        }
+
+        for (_, buf) in buffers {
+            big_buffer.extend_from_slice(&buf);
+        }
+
+        let cs = Capstone::new()
+            .arm()
+            .mode(arch::arm::ArchMode::Arm)
+            .build()
+            .map_err(|e| errors::Error::CapstoneError(e.to_string()))?;
+
+        let insns = cs.disasm_all(&big_buffer, base_addr)
+            .map_err(|e| errors::Error::CapstoneError(e.to_string()))?;
+
+        let mut instructions = Vec::new();
+        for i in insns.iter() {
+            instructions.push(format!("{}", i));
+        }
+
+        Ok(instructions)
+    }
 }
 
 impl Drop for Device {
@@ -406,7 +518,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.1.5", author = "yervant7 and ri-char", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.1.6", author = "yervant7", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -453,6 +565,12 @@ enum Commands {
         pid: i32,
         #[arg(help = "Memory regions to get map (e.g., C_ALLOC,C_BSS, etc.)")]
         regions: String,
+    },
+    Disassemble {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Memory address")]
+        addr: String,
     },
     SearchInt {
         #[arg(help = "Process ID")]
@@ -616,6 +734,30 @@ fn main() {
             };
             for map in maps {
                 println!("{:?}", map);
+            }
+        }
+        Commands::Disassemble { pid, addr } => {
+            let addr = match u64::from_str_radix(&addr.trim_start_matches("0x"), 16) {
+                Ok(val) => val,
+                Err(_) => {
+                    eprintln!("Invalid hexadecimal address");
+                    return;
+                }
+            };
+            match device.disassemble_64(pid, addr) {
+                Ok(instructions) => {
+                    if instructions.is_empty() {
+                        match device.disassemble_32(pid, addr) {
+                            Ok(instructions) => {
+                                println!("{:?}", instructions);
+                            }
+                            Err(e) => eprintln!("Failed to disassemble memory: {:?}", e),
+                        }
+                    } else {
+                        println!("{:?}", instructions);
+                    }
+                }
+                Err(e) => eprintln!("Failed to disassemble memory: {:?}", e),
             }
         }
         Commands::SearchInt { pid, value, regions, path } => {
