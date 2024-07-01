@@ -316,7 +316,6 @@ impl Device {
             .collect::<Vec<_>>();
 
         let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
             .flat_map(|map| {
                 let mut local_addresses = Vec::new();
                 let mut addr = map.start;
@@ -344,7 +343,6 @@ impl Device {
             .collect::<Vec<_>>();
 
         let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
             .flat_map(|map| {
                 let mut local_addresses = Vec::new();
                 let mut addr = map.start;
@@ -372,7 +370,6 @@ impl Device {
             .collect::<Vec<_>>();
 
         let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
             .flat_map(|map| {
                 let mut local_addresses = Vec::new();
                 let mut addr = map.start;
