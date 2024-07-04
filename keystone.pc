@@ -1,4 +1,0 @@
-Name: keystone
-Description: Keystone assembler engine
-Version: 0.9.2
-Libs: -L/mnt/c/Users/hugou/Documents/Github/rwMem -lkeystone
