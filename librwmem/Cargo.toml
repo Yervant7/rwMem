@@ -14,3 +14,4 @@ thiserror = "1"
 clap = { version = "4.5.4", features = ["derive"] }
 rayon = "1.10.0"
 capstone = "0.12.0"
+keystone-engine = { path = "../keystone-bindings", features = ["use-system-lib"] }

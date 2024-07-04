@@ -16,8 +16,12 @@ pub enum Error {
     NotAligned,
     #[error("begin address {0} is larger than end address {1}")]
     BeginLargerThanEnd(u64, u64),
-    #[error("invalid size")]
+    #[error("Invalid size")]
     InvalidSize,
     #[error("Capstone error: ")]
     CapstoneError(String),
+    #[error("Keystone error: ")]
+    KeystoneError(String),
+    #[error("Invalid input ")]
+    InvalidInput(String),
 }

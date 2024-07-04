@@ -12,6 +12,7 @@ use nix::sys::stat;
 use nix::errno::Errno;
 use rayon::prelude::*;
 use capstone::prelude::*;
+use keystone_engine::{Arch, Mode, Keystone};
 
 mod errors;
 
@@ -509,6 +510,33 @@ impl Device {
 
         Ok(instructions)
     }
+
+    pub fn write_assembly(&self, pid: i32, addr: u64, assembly_code: String, is_64_bit: bool) -> Result<()> {
+
+        if assembly_code.is_empty() {
+            return Err(errors::Error::InvalidInput("Assembly code is empty".to_string()));
+        }
+
+        if addr == 0 {
+            return Err(errors::Error::InvalidInput("Address is zero".to_string()));
+        }
+
+        let ks = if is_64_bit {
+            Keystone::new(Arch::ARM64, Mode::LITTLE_ENDIAN)
+                .map_err(|e| errors::Error::KeystoneError(e.to_string()))?
+        } else {
+            Keystone::new(Arch::ARM, Mode::ARM)
+                .map_err(|e| errors::Error::KeystoneError(e.to_string()))?
+        };
+
+        let machine_code = ks.asm(assembly_code, 0).map_err(|e| errors::Error::KeystoneError(e.to_string()))?;
+
+        if machine_code.bytes.is_empty() {
+            return Err(errors::Error::InvalidInput("Failed to assemble code".to_string()));
+        }
+
+        self.write_mem(pid, addr, &machine_code.bytes)
+    }
 }
 
 impl Drop for Device {
@@ -518,7 +546,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.1.6", author = "yervant7", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.1.7", author = "yervant7", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -560,6 +588,16 @@ enum Commands {
         #[arg(help = "Value to write")]
         value: f32,
     },
+    WriteAssembly {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Memory address")]
+        addr: String,
+        #[arg(help = "Code assembly to write")]
+        assembly_code: String,
+        #[arg(help = "is 64 bits?")]
+        is_64_bits: bool,
+    },
     Maps {
         #[arg(help = "Process ID")]
         pid: i32,
@@ -571,6 +609,8 @@ enum Commands {
         pid: i32,
         #[arg(help = "Memory address")]
         addr: String,
+        #[arg(help = "Path to save output")]
+        path: String,
     },
     SearchInt {
         #[arg(help = "Process ID")]
@@ -721,6 +761,19 @@ fn main() {
                 Err(e) => eprintln!("Failed to write memory: {:?}", e),
             }
         }
+        Commands::WriteAssembly {pid, addr, assembly_code, is_64_bits} => {
+            let addr = match u64::from_str_radix(&addr.trim_start_matches("0x"), 16) {
+                Ok(val) => val,
+                Err(_) => {
+                    eprintln!("Invalid hexadecimal address");
+                    return;
+                }
+            };
+            match device.write_assembly(pid, addr, assembly_code.clone(), is_64_bits) {
+                Ok(_) => println!("Wrote code: {} to address: {:#x}", assembly_code, addr),
+                Err(e) => eprintln!("Failed to write memory: {:?}", e),
+            }
+        }
         Commands::Maps { pid, regions } => {
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
@@ -736,11 +789,18 @@ fn main() {
                 println!("{:?}", map);
             }
         }
-        Commands::Disassemble { pid, addr } => {
+        Commands::Disassemble { pid, addr, path } => {
             let addr = match u64::from_str_radix(&addr.trim_start_matches("0x"), 16) {
                 Ok(val) => val,
                 Err(_) => {
                     eprintln!("Invalid hexadecimal address");
+                    return;
+                }
+            };
+            let mut file = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
                     return;
                 }
             };
@@ -749,12 +809,24 @@ fn main() {
                     if instructions.is_empty() {
                         match device.disassemble_32(pid, addr) {
                             Ok(instructions) => {
-                                println!("{:?}", instructions);
+                                for instruction in instructions {
+                                    if let Err(e) = writeln!(file, "{}", instruction) {
+                                        eprintln!("Failed to write to file: {:?}", e);
+                                        return;
+                                    }
+                                }
+                                println!("Disassemble32 finished check file: {}", path);
                             }
                             Err(e) => eprintln!("Failed to disassemble memory: {:?}", e),
                         }
                     } else {
-                        println!("{:?}", instructions);
+                        for instruction in instructions {
+                            if let Err(e) = writeln!(file, "{}", instruction) {
+                                eprintln!("Failed to write to file: {:?}", e);
+                                return;
+                            }
+                        }
+                        println!("Disassemble64 finished check file: {}", path);
                     }
                 }
                 Err(e) => eprintln!("Failed to disassemble memory: {:?}", e),
