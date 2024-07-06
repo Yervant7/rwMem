@@ -10,7 +10,7 @@ int rwProcMem_release(struct inode *inode, struct file *filp) { return 0; }
 
 ssize_t rwProcMem_read(struct file *filp, char __user *buf, size_t size, loff_t *ppos) {
     char data[17] = {0};
-    unsigned long read = x_copy_from_user(data, buf, 17);
+    unsigned long read = x_copy_from_user(data, buf, sizeof(data));
     if (read == 0) {
         pid_t pid = (pid_t) * (size_t *)&data;
         size_t proc_virt_addr = *(size_t *)&data[8];
@@ -74,7 +74,7 @@ ssize_t rwProcMem_read(struct file *filp, char __user *buf, size_t size, loff_t 
 
 ssize_t rwProcMem_write(struct file *filp, const char __user *buf, size_t size, loff_t *ppos) {
     char data[17] = {0};
-    unsigned long write = x_copy_from_user(data, buf, 17);
+    unsigned long write = x_copy_from_user(data, buf, sizeof(data));
     if (write == 0) {
         pid_t pid = (pid_t) * (size_t *)data;
         size_t proc_virt_addr = *(size_t *)&data[8];
