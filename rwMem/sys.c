@@ -141,7 +141,7 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
         pid_t pid;
         uint64_t res;
         struct pid *pid_struct;
-        if (x_copy_from_user((void *)&pid, (void *)arg, 8)) {
+        if (x_copy_from_user((void *)&pid, (void *)arg, sizeof(pid))) {
             return -EINVAL;
         }
         pid_struct = find_get_pid(pid);
@@ -160,7 +160,7 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
         struct pid *pid_struct;
         int have_pass = 0;
         uint64_t count = 0;
-        if (x_copy_from_user((void *)buf, (void *)arg, 24)) {
+        if (x_copy_from_user((void *)buf, (void *)arg, sizeof(buf))) {
             return -EINVAL;
         }
         pid = (pid_t) * (size_t *)buf;
