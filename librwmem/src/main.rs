@@ -343,152 +343,172 @@ impl Device {
         Ok(matching_addresses)
     }
 
-    fn search_value_int(&self, pid: i32, value: i32, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
+    fn search_value_int(&self, pid: i32, value: i32, regions: Vec<MemoryRegion>) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
         let maps = self.get_mem_map(pid, false)?
             .into_iter()
             .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
 
-        let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
-            .flat_map(|map| {
-                let mut local_addresses = Vec::new();
-                let mut addr = map.start;
+        let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+            .flat_map(|&region| {
+                maps.par_iter()
+                    .filter(|map| region.matches(map) && map.read_permission)
+                    .map(|map| {
+                        let mut local_addresses = Vec::new();
+                        let mut addr = map.start;
 
-                while addr + std::mem::size_of::<i32>() as u64 <= map.end {
-                    let mut addrs_to_read = Vec::new();
-                    let mut current_addr = addr;
+                        while addr + std::mem::size_of::<i32>() as u64 <= map.end {
+                            let mut addrs_to_read = Vec::new();
+                            let mut current_addr = addr;
 
-                    while current_addr + std::mem::size_of::<i32>() as u64 <= map.end && addrs_to_read.len() < 200 {
-                        addrs_to_read.push(current_addr);
-                        current_addr += std::mem::size_of::<i32>() as u64;
-                    }
+                            while current_addr + std::mem::size_of::<i32>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                addrs_to_read.push(current_addr);
+                                current_addr += std::mem::size_of::<i32>() as u64;
+                            }
 
-                    match self.search_memory_int(pid, &addrs_to_read, value) {
-                        Ok(matching_addresses) => {
-                            local_addresses.extend(matching_addresses);
-                        },
-                        Err(_e) => {
+                            match self.search_memory_int(pid, &addrs_to_read, value) {
+                                Ok(matching_addresses) => {
+                                    local_addresses.extend(matching_addresses);
+                                },
+                                Err(_e) => {}
+                            }
+                            addr = current_addr;
                         }
-                    }
-                    addr = current_addr; // Update addr to continue from the next address
-                }
-                local_addresses
+
+                        (region, local_addresses)
+                    })
+                    .collect::<Vec<_>>()
             })
+            .filter(|(_, addresses)| !addresses.is_empty())
             .collect();
 
-        Ok(addresses)
+        Ok(results)
     }
 
-    fn search_value_float(&self, pid: i32, value: f32, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
+    fn search_value_float(&self, pid: i32, value: f32, regions: Vec<MemoryRegion>) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
         let maps = self.get_mem_map(pid, false)?
             .into_iter()
             .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
 
-        let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
-            .flat_map(|map| {
-                let mut local_addresses = Vec::new();
-                let mut addr = map.start;
+        let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+            .flat_map(|&region| {
+                maps.par_iter()
+                    .filter(|map| region.matches(map) && map.read_permission)
+                    .map(|map| {
+                        let mut local_addresses = Vec::new();
+                        let mut addr = map.start;
 
-                while addr + std::mem::size_of::<f32>() as u64 <= map.end {
-                    let mut addrs_to_read = Vec::new();
-                    let mut current_addr = addr;
+                        while addr + std::mem::size_of::<f32>() as u64 <= map.end {
+                            let mut addrs_to_read = Vec::new();
+                            let mut current_addr = addr;
 
-                    while current_addr + std::mem::size_of::<f32>() as u64 <= map.end && addrs_to_read.len() < 200 {
-                        addrs_to_read.push(current_addr);
-                        current_addr += std::mem::size_of::<f32>() as u64;
-                    }
+                            while current_addr + std::mem::size_of::<f32>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                addrs_to_read.push(current_addr);
+                                current_addr += std::mem::size_of::<f32>() as u64;
+                            }
 
-                    match self.search_memory_float(pid, &addrs_to_read, value) {
-                        Ok(matching_addresses) => {
-                            local_addresses.extend(matching_addresses);
-                        },
-                        Err(_e) => {
+                            match self.search_memory_float(pid, &addrs_to_read, value) {
+                                Ok(matching_addresses) => {
+                                    local_addresses.extend(matching_addresses);
+                                },
+                                Err(_e) => {}
+                            }
+                            addr = current_addr;
                         }
-                    }
-                    addr = current_addr; // Update addr to continue from the next address
-                }
-                local_addresses
+
+                        (region, local_addresses)
+                    })
+                    .collect::<Vec<_>>()
             })
+            .filter(|(_, addresses)| !addresses.is_empty())
             .collect();
 
-        Ok(addresses)
+        Ok(results)
     }
 
-    fn search_value_long(&self, pid: i32, value: i64, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
+    fn search_value_long(&self, pid: i32, value: i64, regions: Vec<MemoryRegion>) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
         let maps = self.get_mem_map(pid, false)?
             .into_iter()
             .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
 
-        let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
-            .flat_map(|map| {
-                let mut local_addresses = Vec::new();
-                let mut addr = map.start;
+        let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+            .flat_map(|&region| {
+                maps.par_iter()
+                    .filter(|map| region.matches(map) && map.read_permission)
+                    .map(|map| {
+                        let mut local_addresses = Vec::new();
+                        let mut addr = map.start;
 
-                while addr + std::mem::size_of::<i64>() as u64 <= map.end {
-                    let mut addrs_to_read = Vec::new();
-                    let mut current_addr = addr;
+                        while addr + std::mem::size_of::<i64>() as u64 <= map.end {
+                            let mut addrs_to_read = Vec::new();
+                            let mut current_addr = addr;
 
-                    while current_addr + std::mem::size_of::<i64>() as u64 <= map.end && addrs_to_read.len() < 200 {
-                        addrs_to_read.push(current_addr);
-                        current_addr += std::mem::size_of::<i64>() as u64;
-                    }
+                            while current_addr + std::mem::size_of::<i64>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                addrs_to_read.push(current_addr);
+                                current_addr += std::mem::size_of::<i64>() as u64;
+                            }
 
-                    match self.search_memory_long(pid, &addrs_to_read, value) {
-                        Ok(matching_addresses) => {
-                            local_addresses.extend(matching_addresses);
-                        },
-                        Err(_e) => {
+                            match self.search_memory_long(pid, &addrs_to_read, value) {
+                                Ok(matching_addresses) => {
+                                    local_addresses.extend(matching_addresses);
+                                },
+                                Err(_e) => {}
+                            }
+                            addr = current_addr;
                         }
-                    }
-                    addr = current_addr; // Update addr to continue from the next address
-                }
-                local_addresses
+
+                        (region, local_addresses)
+                    })
+                    .collect::<Vec<_>>()
             })
+            .filter(|(_, addresses)| !addresses.is_empty())
             .collect();
 
-        Ok(addresses)
+        Ok(results)
     }
 
-    fn search_value_double(&self, pid: i32, value: f64, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
+    fn search_value_double(&self, pid: i32, value: f64, regions: Vec<MemoryRegion>) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
         let maps = self.get_mem_map(pid, false)?
             .into_iter()
             .filter(|map| regions.iter().any(|region| region.matches(map)))
             .collect::<Vec<_>>();
 
-        let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
-            .flat_map(|map| {
-                let mut local_addresses = Vec::new();
-                let mut addr = map.start;
+        let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+            .flat_map(|&region| {
+                maps.par_iter()
+                    .filter(|map| region.matches(map) && map.read_permission)
+                    .map(|map| {
+                        let mut local_addresses = Vec::new();
+                        let mut addr = map.start;
 
-                while addr + std::mem::size_of::<f64>() as u64 <= map.end {
-                    let mut addrs_to_read = Vec::new();
-                    let mut current_addr = addr;
+                        while addr + std::mem::size_of::<f64>() as u64 <= map.end {
+                            let mut addrs_to_read = Vec::new();
+                            let mut current_addr = addr;
 
-                    while current_addr + std::mem::size_of::<f64>() as u64 <= map.end && addrs_to_read.len() < 200 {
-                        addrs_to_read.push(current_addr);
-                        current_addr += std::mem::size_of::<f64>() as u64;
-                    }
+                            while current_addr + std::mem::size_of::<f64>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                addrs_to_read.push(current_addr);
+                                current_addr += std::mem::size_of::<f64>() as u64;
+                            }
 
-                    match self.search_memory_double(pid, &addrs_to_read, value) {
-                        Ok(matching_addresses) => {
-                            local_addresses.extend(matching_addresses);
-                        },
-                        Err(_e) => {
+                            match self.search_memory_double(pid, &addrs_to_read, value) {
+                                Ok(matching_addresses) => {
+                                    local_addresses.extend(matching_addresses);
+                                },
+                                Err(_e) => {}
+                            }
+                            addr = current_addr;
                         }
-                    }
-                    addr = current_addr; // Update addr to continue from the next address
-                }
-                local_addresses
+
+                        (region, local_addresses)
+                    })
+                    .collect::<Vec<_>>()
             })
+            .filter(|(_, addresses)| !addresses.is_empty())
             .collect();
 
-        Ok(addresses)
+        Ok(results)
     }
 
     /// get the memory map of a process.
@@ -1147,8 +1167,8 @@ fn main() {
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
-            let addresses = match device.search_value_int(pid, value, regions) {
-                Ok(addrs) => addrs,
+            let results = match device.search_value_int(pid, value, regions) {
+                Ok(results) => results,
                 Err(e) => {
                     eprintln!("Failed to search for int value: {:?}", e);
                     return;
@@ -1161,8 +1181,18 @@ fn main() {
                     return;
                 }
             };
-            for addr in &addresses {
-                if let Err(e) = writeln!(file, "{:#x}", addr) {
+            for (region, addresses) in results {
+                if let Err(e) = writeln!(file, "{:?} :", region) {
+                    eprintln!("Failed to write to file: {:?}", e);
+                    return;
+                }
+                for address in addresses {
+                    if let Err(e) = writeln!(file, "{:#x}", address) {
+                        eprintln!("Failed to write to file: {:?}", e);
+                        return;
+                    }
+                }
+                if let Err(e) = writeln!(file, "===END_OF_REGION===") {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
                 }
@@ -1175,8 +1205,8 @@ fn main() {
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
-            let addresses = match device.search_value_long(pid, value, regions) {
-                Ok(addrs) => addrs,
+            let results = match device.search_value_long(pid, value, regions) {
+                Ok(results) => results,
                 Err(e) => {
                     eprintln!("Failed to search for long value: {:?}", e);
                     return;
@@ -1189,8 +1219,18 @@ fn main() {
                     return;
                 }
             };
-            for addr in &addresses {
-                if let Err(e) = writeln!(file, "{:#x}", addr) {
+            for (region, addresses) in results {
+                if let Err(e) = writeln!(file, "{:?} :", region) {
+                    eprintln!("Failed to write to file: {:?}", e);
+                    return;
+                }
+                for address in addresses {
+                    if let Err(e) = writeln!(file, "{:#x}", address) {
+                        eprintln!("Failed to write to file: {:?}", e);
+                        return;
+                    }
+                }
+                if let Err(e) = writeln!(file, "===END_OF_REGION===") {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
                 }
@@ -1203,8 +1243,8 @@ fn main() {
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
-            let addresses = match device.search_value_float(pid, value, regions) {
-                Ok(addrs) => addrs,
+            let results = match device.search_value_float(pid, value, regions) {
+                Ok(results) => results,
                 Err(e) => {
                     eprintln!("Failed to search for float value: {:?}", e);
                     return;
@@ -1217,8 +1257,18 @@ fn main() {
                     return;
                 }
             };
-            for addr in &addresses {
-                if let Err(e) = writeln!(file, "{:#x}", addr) {
+            for (region, addresses) in results {
+                if let Err(e) = writeln!(file, "{:?} :", region) {
+                    eprintln!("Failed to write to file: {:?}", e);
+                    return;
+                }
+                for address in addresses {
+                    if let Err(e) = writeln!(file, "{:#x}", address) {
+                        eprintln!("Failed to write to file: {:?}", e);
+                        return;
+                    }
+                }
+                if let Err(e) = writeln!(file, "===END_OF_REGION===") {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
                 }
@@ -1231,8 +1281,8 @@ fn main() {
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
-            let addresses = match device.search_value_double(pid, value, regions) {
-                Ok(addrs) => addrs,
+            let results = match device.search_value_double(pid, value, regions) {
+                Ok(results) => results,
                 Err(e) => {
                     eprintln!("Failed to search for float value: {:?}", e);
                     return;
@@ -1245,8 +1295,18 @@ fn main() {
                     return;
                 }
             };
-            for addr in &addresses {
-                if let Err(e) = writeln!(file, "{:#x}", addr) {
+            for (region, addresses) in results {
+                if let Err(e) = writeln!(file, "{:?} :", region) {
+                    eprintln!("Failed to write to file: {:?}", e);
+                    return;
+                }
+                for address in addresses {
+                    if let Err(e) = writeln!(file, "{:#x}", address) {
+                        eprintln!("Failed to write to file: {:?}", e);
+                        return;
+                    }
+                }
+                if let Err(e) = writeln!(file, "===END_OF_REGION===") {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
                 }
