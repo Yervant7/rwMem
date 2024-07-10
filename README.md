@@ -17,6 +17,16 @@ Read and write memory in a remote process is a common task in game hacking. Ther
 make CC=clang LLVM=1 KDIR=<android-kernel>/out/android13-5.15/common 
 ```
 
+### Librwmem
+
+1. clone this repository and my modification of keystone-bindings
+2. edit the file build.rs of keystone-bindings to add your PATH for the RWMEM repository
+3. download NDK and add to your system variables
+4. run 
+```bash
+clang ndk -t arm64-v8a build
+```
+
 ## How to use?
 
 Install the kernel module and then run the librwmem executable.
