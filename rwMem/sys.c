@@ -3,6 +3,9 @@
 #include "linux/pid.h"
 #include "linux/printk.h"
 #include "linux/types.h"
+#include "linux/mutex.h"
+
+static DEFINE_MUTEX(rwProcMem_mutex);
 
 int rwProcMem_open(struct inode *inode, struct file *filp) { return 0; }
 
@@ -135,6 +138,302 @@ ssize_t rwProcMem_write(struct file *filp, const char __user *buf, size_t size, 
     return -EFAULT;
 }
 
+ssize_t rwProcMem_search_int(struct SearchParamsInt *params) {
+
+    pid_t pid = params->pid;
+    bool is_force_read = params->is_force_read;
+    size_t value_size = 4;
+
+    struct pid *pid_struct = find_get_pid(pid);
+    if (!pid_struct) {
+        return -EINVAL;
+    }
+
+    size_t num_addresses = params->num_addresses;
+    if (num_addresses > 200) {
+        num_addresses = 200;
+    }
+
+    size_t read_size = 0;
+    params->num_matching_addresses = 0;
+    size_t i = 0;
+    for (i; i < num_addresses; ++i) {
+        uint64_t proc_virt_addr = params->addresses[i];
+        char buf[4] = {0};
+        pte_t *pte;
+
+        if (!is_force_read && !check_proc_map_can_read(pid_struct, proc_virt_addr, value_size)) {
+            continue;
+        }
+
+        size_t phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
+        if (phy_addr == 0) {
+            continue;
+        }
+
+        bool old_pte_can_read = is_pte_can_read(pte);
+        if (is_force_read) {
+            if (!old_pte_can_read && !change_pte_read_status(pte, true)) {
+                continue;
+            }
+        } else if (!old_pte_can_read) {
+            continue;
+        }
+
+        size_t pfn_sz = size_inside_page(phy_addr, value_size);
+        size_t actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
+        if (actual_read != pfn_sz) {
+            if (is_force_read && !old_pte_can_read) {
+                change_pte_read_status(pte, false);
+            }
+            continue;
+        }
+
+        if (is_force_read && !old_pte_can_read) {
+            change_pte_read_status(pte, false);
+        }
+
+        int read_value = *(int*)buf;
+        int value_to_compare = params->value_to_compare;
+
+        if (read_value == value_to_compare) {
+            params->matching_addresses[params->num_matching_addresses++] = proc_virt_addr;
+        }
+
+        read_size += pfn_sz;
+    }
+
+    put_pid(pid_struct);
+
+    if (params->num_matching_addresses == 0) {
+        return -EFAULT;
+    }
+
+    return 0;
+}
+
+ssize_t rwProcMem_search_float(struct SearchParamsFloat *params) {
+
+    pid_t pid = params->pid;
+    bool is_force_read = params->is_force_read;
+    size_t value_size = 4;
+
+    struct pid *pid_struct = find_get_pid(pid);
+    if (!pid_struct) {
+        return -EINVAL;
+    }
+
+    size_t num_addresses = params->num_addresses;
+    if (num_addresses > 200) {
+        num_addresses = 200;
+    }
+
+    size_t read_size = 0;
+    params->num_matching_addresses = 0;
+    size_t i = 0;
+    for (i; i < num_addresses; ++i) {
+        uint64_t proc_virt_addr = params->addresses[i];
+        char buf[4] = {0};
+        pte_t *pte;
+
+        if (!is_force_read && !check_proc_map_can_read(pid_struct, proc_virt_addr, value_size)) {
+            continue;
+        }
+
+        size_t phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
+        if (phy_addr == 0) {
+            continue;
+        }
+
+        bool old_pte_can_read = is_pte_can_read(pte);
+        if (is_force_read) {
+            if (!old_pte_can_read && !change_pte_read_status(pte, true)) {
+                continue;
+            }
+        } else if (!old_pte_can_read) {
+            continue;
+        }
+
+        size_t pfn_sz = size_inside_page(phy_addr, value_size);
+        size_t actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
+        if (actual_read != pfn_sz) {
+            if (is_force_read && !old_pte_can_read) {
+                change_pte_read_status(pte, false);
+            }
+            continue;
+        }
+
+        if (is_force_read && !old_pte_can_read) {
+            change_pte_read_status(pte, false);
+        }
+
+        float read_value = *(float*)buf;
+        float value_to_compare = params->value_to_compare;
+
+        if (read_value == value_to_compare) {
+            params->matching_addresses[params->num_matching_addresses++] = proc_virt_addr;
+        }
+
+        read_size += pfn_sz;
+    }
+
+    put_pid(pid_struct);
+
+    if (params->num_matching_addresses == 0) {
+        return -EFAULT;
+    }
+
+    return 0;
+}
+
+ssize_t rwProcMem_search_long(struct SearchParamsLong *params) {
+
+    pid_t pid = params->pid;
+    bool is_force_read = params->is_force_read;
+    size_t value_size = 8;
+
+    struct pid *pid_struct = find_get_pid(pid);
+    if (!pid_struct) {
+        return -EINVAL;
+    }
+
+    size_t num_addresses = params->num_addresses;
+    if (num_addresses > 200) {
+        num_addresses = 200;
+    }
+
+    size_t read_size = 0;
+    params->num_matching_addresses = 0;
+    size_t i = 0;
+    for (i; i < num_addresses; ++i) {
+        uint64_t proc_virt_addr = params->addresses[i];
+        char buf[8] = {0};
+        pte_t *pte;
+
+        if (!is_force_read && !check_proc_map_can_read(pid_struct, proc_virt_addr, value_size)) {
+            continue;
+        }
+
+        size_t phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
+        if (phy_addr == 0) {
+            continue;
+        }
+
+        bool old_pte_can_read = is_pte_can_read(pte);
+        if (is_force_read) {
+            if (!old_pte_can_read && !change_pte_read_status(pte, true)) {
+                continue;
+            }
+        } else if (!old_pte_can_read) {
+            continue;
+        }
+
+        size_t pfn_sz = size_inside_page(phy_addr, value_size);
+        size_t actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
+        if (actual_read != pfn_sz) {
+            if (is_force_read && !old_pte_can_read) {
+                change_pte_read_status(pte, false);
+            }
+            continue;
+        }
+
+        if (is_force_read && !old_pte_can_read) {
+            change_pte_read_status(pte, false);
+        }
+
+        long read_value = *(long*)buf;
+        long value_to_compare = params->value_to_compare;
+
+        if (read_value == value_to_compare) {
+            params->matching_addresses[params->num_matching_addresses++] = proc_virt_addr;
+        }
+
+        read_size += pfn_sz;
+    }
+
+    put_pid(pid_struct);
+
+    if (params->num_matching_addresses == 0) {
+        return -EFAULT;
+    }
+
+    return 0;
+}
+
+ssize_t rwProcMem_search_double(struct SearchParamsDouble *params) {
+
+    pid_t pid = params->pid;
+    bool is_force_read = params->is_force_read;
+    size_t value_size = 8;
+
+    struct pid *pid_struct = find_get_pid(pid);
+    if (!pid_struct) {
+        return -EINVAL;
+    }
+
+    size_t num_addresses = params->num_addresses;
+    if (num_addresses > 200) {
+        num_addresses = 200;
+    }
+
+    size_t read_size = 0;
+    params->num_matching_addresses = 0;
+    size_t i = 0;
+    for (i; i < num_addresses; ++i) {
+        uint64_t proc_virt_addr = params->addresses[i];
+        char buf[8] = {0};
+        pte_t *pte;
+
+        if (!is_force_read && !check_proc_map_can_read(pid_struct, proc_virt_addr, value_size)) {
+            continue;
+        }
+
+        size_t phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
+        if (phy_addr == 0) {
+            continue;
+        }
+
+        bool old_pte_can_read = is_pte_can_read(pte);
+        if (is_force_read) {
+            if (!old_pte_can_read && !change_pte_read_status(pte, true)) {
+                continue;
+            }
+        } else if (!old_pte_can_read) {
+            continue;
+        }
+
+        size_t pfn_sz = size_inside_page(phy_addr, value_size);
+        size_t actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
+        if (actual_read != pfn_sz) {
+            if (is_force_read && !old_pte_can_read) {
+                change_pte_read_status(pte, false);
+            }
+            continue;
+        }
+
+        if (is_force_read && !old_pte_can_read) {
+            change_pte_read_status(pte, false);
+        }
+
+        double read_value = *(double*)buf;
+        double value_to_compare = params->value_to_compare;
+
+        if (read_value == value_to_compare) {
+            params->matching_addresses[params->num_matching_addresses++] = proc_virt_addr;
+        }
+
+        read_size += pfn_sz;
+    }
+
+    put_pid(pid_struct);
+
+    if (params->num_matching_addresses == 0) {
+        return -EFAULT;
+    }
+
+    return 0;
+}
+
 static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
     switch (cmd) {
     case IOCTL_GET_PROCESS_MAPS_COUNT: {
@@ -246,6 +545,94 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
         }
         kfree(retBuf);
         return pages;
+    }
+    case IOCTL_MEM_SEARCH_INT: {
+        struct SearchParamsInt params;
+        if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        mutex_lock(&rwProcMem_mutex);
+
+        ssize_t result = rwProcMem_search_int(&params);
+
+        mutex_unlock(&rwProcMem_mutex);
+
+        if (result < 0) {
+            return result;
+        }
+
+        if (x_copy_to_user((void *)arg, &params, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        return 0;
+    }
+    case IOCTL_MEM_SEARCH_FLOAT: {
+        struct SearchParamsFloat params;
+        if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        mutex_lock(&rwProcMem_mutex);
+
+        ssize_t result = rwProcMem_search_float(&params);
+
+        mutex_unlock(&rwProcMem_mutex);
+
+        if (result < 0) {
+            return result;
+        }
+
+        if (x_copy_to_user((void *)arg, &params, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        return 0;
+    }
+    case IOCTL_MEM_SEARCH_LONG: {
+        struct SearchParamsLong params;
+        if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        mutex_lock(&rwProcMem_mutex);
+
+        ssize_t result = rwProcMem_search_long(&params);
+
+        mutex_unlock(&rwProcMem_mutex);
+
+        if (result < 0) {
+            return result;
+        }
+
+        if (x_copy_to_user((void *)arg, &params, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        return 0;
+    }
+    case IOCTL_MEM_SEARCH_DOUBLE: {
+        struct SearchParamsDouble params;
+        if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        mutex_lock(&rwProcMem_mutex);
+
+        ssize_t result = rwProcMem_search_double(&params);
+
+        mutex_unlock(&rwProcMem_mutex);
+
+        if (result < 0) {
+            return result;
+        }
+
+        if (x_copy_to_user((void *)arg, &params, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        return 0;
     }
     default:
         return -EINVAL;

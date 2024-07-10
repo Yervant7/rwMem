@@ -8,6 +8,7 @@
 #include <asm/page.h>
 #include <linux/fs.h>
 #include <linux/pid.h>
+#include <linux/string.h>
 
 static inline int is_pte_can_read(pte_t *pte);
 static inline int is_pte_can_write(pte_t *pte);

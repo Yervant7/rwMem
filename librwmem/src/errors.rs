@@ -24,4 +24,6 @@ pub enum Error {
     KeystoneError(String),
     #[error("Invalid input ")]
     InvalidInput(String),
+    #[error("")]
+    IoctlFailed,
 }

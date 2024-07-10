@@ -5,11 +5,13 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Cursor, Read, Write};
 use std::os::unix::io::RawFd;
 use std::path::Path;
+use std::{str};
+use std::time::Instant;
 use byteorder::{NativeEndian, ReadBytesExt};
 use nix::request_code_readwrite;
 use nix::fcntl;
 use nix::sys::stat;
-use nix::errno::Errno;
+use nix::errno::{Errno};
 use rayon::prelude::*;
 use capstone::prelude::*;
 use keystone_engine::{Arch, Mode, Keystone};
@@ -22,6 +24,58 @@ const RWMEM_MAGIC: u8 = 100;
 const IOCTL_GET_PROCESS_MAPS_COUNT: u8 = 0;
 const IOCTL_GET_PROCESS_MAPS_LIST: u8 = 1;
 const IOCTL_CHECK_PROCESS_ADDR_PHY: u8 = 2;
+const IOCTL_MEM_SEARCH_INT: u8 = 3;
+const IOCTL_MEM_SEARCH_FLOAT: u8 = 4;
+const IOCTL_MEM_SEARCH_LONG: u8 = 5;
+const IOCTL_MEM_SEARCH_DOUBLE: u8 = 6;
+
+#[repr(C)]
+#[derive(Debug)]
+struct SearchParamsInt {
+    pid: libc::pid_t,
+    is_force_read: bool,
+    value_to_compare: libc::c_int,
+    addresses: [u64; 200],
+    num_addresses: libc::size_t,
+    matching_addresses: [u64; 200],
+    num_matching_addresses: libc::size_t,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct SearchParamsFloat {
+    pid: libc::pid_t,
+    is_force_read: bool,
+    value_to_compare: libc::c_float,
+    addresses: [u64; 200],
+    num_addresses: libc::size_t,
+    matching_addresses: [u64; 200],
+    num_matching_addresses: libc::size_t,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct SearchParamsLong {
+    pid: libc::pid_t,
+    is_force_read: bool,
+    value_to_compare: libc::c_long,
+    addresses: [u64; 200],
+    num_addresses: libc::size_t,
+    matching_addresses: [u64; 200],
+    num_matching_addresses: libc::size_t,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct SearchParamsDouble {
+    pid: libc::pid_t,
+    is_force_read: bool,
+    value_to_compare: libc::c_double,
+    addresses: [u64; 200],
+    num_addresses: libc::size_t,
+    matching_addresses: [u64; 200],
+    num_matching_addresses: libc::size_t,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MapsEntry {
@@ -145,6 +199,296 @@ impl Device {
             return Err(errors::Error::WriteFailed(new_buf.len(), real_write as usize));
         }
         Ok(())
+    }
+
+    pub fn search_memory_int(&self, pid: i32, addresses: &[u64], value_to_compare: i32) -> Result<Vec<u64>> {
+        let num_addresses = addresses.len();
+        let mut params = SearchParamsInt {
+            pid,
+            is_force_read: true,
+            value_to_compare: 0,
+            addresses: [0; 200],
+            num_addresses,
+            matching_addresses: [0; 200],
+            num_matching_addresses: 0,
+        };
+
+        for (i, &address) in addresses.iter().enumerate() {
+            params.addresses[i] = address;
+        }
+
+        params.value_to_compare = value_to_compare as libc::c_int;
+
+        let ret = unsafe {
+            libc::ioctl(
+                self.fd,
+                request_code_readwrite!(RWMEM_MAGIC, IOCTL_MEM_SEARCH_INT, std::mem::size_of::<SearchParamsInt>()),
+                &mut params as *mut _ as *mut libc::c_void,
+            )
+        };
+
+        if ret < 0 {
+            return Err(errors::Error::IoctlFailed);
+        }
+
+        let matching_addresses = params.matching_addresses[..params.num_matching_addresses].to_vec();
+
+        Ok(matching_addresses)
+    }
+
+    pub fn search_memory_float(&self, pid: i32, addresses: &[u64], value_to_compare: f32) -> Result<Vec<u64>> {
+        let num_addresses = addresses.len();
+        let mut params = SearchParamsFloat {
+            pid,
+            is_force_read: true,
+            value_to_compare: 0.0,
+            addresses: [0; 200],
+            num_addresses,
+            matching_addresses: [0; 200],
+            num_matching_addresses: 0,
+        };
+
+        for (i, &address) in addresses.iter().enumerate() {
+            params.addresses[i] = address;
+        }
+
+        params.value_to_compare = value_to_compare as libc::c_float;
+
+        let ret = unsafe {
+            libc::ioctl(
+                self.fd,
+                request_code_readwrite!(RWMEM_MAGIC, IOCTL_MEM_SEARCH_FLOAT, std::mem::size_of::<SearchParamsFloat>()),
+                &mut params as *mut _ as *mut libc::c_void,
+            )
+        };
+
+        if ret < 0 {
+            return Err(errors::Error::IoctlFailed);
+        }
+
+        let matching_addresses = params.matching_addresses[..params.num_matching_addresses].to_vec();
+
+        Ok(matching_addresses)
+    }
+
+    pub fn search_memory_long(&self, pid: i32, addresses: &[u64], value_to_compare: i64) -> Result<Vec<u64>> {
+        let num_addresses = addresses.len();
+        let mut params = SearchParamsLong {
+            pid,
+            is_force_read: true,
+            value_to_compare: 0,
+            addresses: [0; 200],
+            num_addresses,
+            matching_addresses: [0; 200],
+            num_matching_addresses: 0,
+        };
+
+        for (i, &address) in addresses.iter().enumerate() {
+            params.addresses[i] = address;
+        }
+
+        params.value_to_compare = value_to_compare as libc::c_long;
+
+
+        let ret = unsafe {
+            libc::ioctl(
+                self.fd,
+                request_code_readwrite!(RWMEM_MAGIC, IOCTL_MEM_SEARCH_LONG, std::mem::size_of::<SearchParamsLong>()),
+                &mut params as *mut _ as *mut libc::c_void,
+            )
+        };
+
+        if ret < 0 {
+            return Err(errors::Error::IoctlFailed);
+        }
+
+        let matching_addresses = params.matching_addresses[..params.num_matching_addresses].to_vec();
+
+        Ok(matching_addresses)
+    }
+
+    pub fn search_memory_double(&self, pid: i32, addresses: &[u64], value_to_compare: f64) -> Result<Vec<u64>> {
+        let num_addresses = addresses.len();
+        let mut params = SearchParamsDouble {
+            pid,
+            is_force_read: true,
+            value_to_compare: 0.0,
+            addresses: [0; 200],
+            num_addresses,
+            matching_addresses: [0; 200],
+            num_matching_addresses: 0,
+        };
+
+        for (i, &address) in addresses.iter().enumerate() {
+            params.addresses[i] = address;
+        }
+
+        params.value_to_compare = value_to_compare as libc::c_double;
+
+
+        let ret = unsafe {
+            libc::ioctl(
+                self.fd,
+                request_code_readwrite!(RWMEM_MAGIC, IOCTL_MEM_SEARCH_DOUBLE, std::mem::size_of::<SearchParamsDouble>()),
+                &mut params as *mut _ as *mut libc::c_void,
+            )
+        };
+
+        if ret < 0 {
+            return Err(errors::Error::IoctlFailed);
+        }
+
+        let matching_addresses = params.matching_addresses[..params.num_matching_addresses].to_vec();
+
+        Ok(matching_addresses)
+    }
+
+    fn search_value_int(&self, pid: i32, value: i32, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
+        let maps = self.get_mem_map(pid, false)?
+            .into_iter()
+            .filter(|map| regions.iter().any(|region| region.matches(map)))
+            .collect::<Vec<_>>();
+
+        let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
+            .flat_map(|map| {
+                let mut local_addresses = Vec::new();
+                let mut addr = map.start;
+
+                while addr + std::mem::size_of::<i32>() as u64 <= map.end {
+                    let mut addrs_to_read = Vec::new();
+                    let mut current_addr = addr;
+
+                    while current_addr + std::mem::size_of::<i32>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                        addrs_to_read.push(current_addr);
+                        current_addr += std::mem::size_of::<i32>() as u64;
+                    }
+
+                    match self.search_memory_int(pid, &addrs_to_read, value) {
+                        Ok(matching_addresses) => {
+                            local_addresses.extend(matching_addresses);
+                        },
+                        Err(_e) => {
+                        }
+                    }
+                    addr = current_addr; // Update addr to continue from the next address
+                }
+                local_addresses
+            })
+            .collect();
+
+        Ok(addresses)
+    }
+
+    fn search_value_float(&self, pid: i32, value: f32, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
+        let maps = self.get_mem_map(pid, false)?
+            .into_iter()
+            .filter(|map| regions.iter().any(|region| region.matches(map)))
+            .collect::<Vec<_>>();
+
+        let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
+            .flat_map(|map| {
+                let mut local_addresses = Vec::new();
+                let mut addr = map.start;
+
+                while addr + std::mem::size_of::<f32>() as u64 <= map.end {
+                    let mut addrs_to_read = Vec::new();
+                    let mut current_addr = addr;
+
+                    while current_addr + std::mem::size_of::<f32>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                        addrs_to_read.push(current_addr);
+                        current_addr += std::mem::size_of::<f32>() as u64;
+                    }
+
+                    match self.search_memory_float(pid, &addrs_to_read, value) {
+                        Ok(matching_addresses) => {
+                            local_addresses.extend(matching_addresses);
+                        },
+                        Err(_e) => {
+                        }
+                    }
+                    addr = current_addr; // Update addr to continue from the next address
+                }
+                local_addresses
+            })
+            .collect();
+
+        Ok(addresses)
+    }
+
+    fn search_value_long(&self, pid: i32, value: i64, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
+        let maps = self.get_mem_map(pid, false)?
+            .into_iter()
+            .filter(|map| regions.iter().any(|region| region.matches(map)))
+            .collect::<Vec<_>>();
+
+        let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
+            .flat_map(|map| {
+                let mut local_addresses = Vec::new();
+                let mut addr = map.start;
+
+                while addr + std::mem::size_of::<i64>() as u64 <= map.end {
+                    let mut addrs_to_read = Vec::new();
+                    let mut current_addr = addr;
+
+                    while current_addr + std::mem::size_of::<i64>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                        addrs_to_read.push(current_addr);
+                        current_addr += std::mem::size_of::<i64>() as u64;
+                    }
+
+                    match self.search_memory_long(pid, &addrs_to_read, value) {
+                        Ok(matching_addresses) => {
+                            local_addresses.extend(matching_addresses);
+                        },
+                        Err(_e) => {
+                        }
+                    }
+                    addr = current_addr; // Update addr to continue from the next address
+                }
+                local_addresses
+            })
+            .collect();
+
+        Ok(addresses)
+    }
+
+    fn search_value_double(&self, pid: i32, value: f64, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
+        let maps = self.get_mem_map(pid, false)?
+            .into_iter()
+            .filter(|map| regions.iter().any(|region| region.matches(map)))
+            .collect::<Vec<_>>();
+
+        let addresses: Vec<u64> = maps.par_iter()
+            .filter(|map| map.read_permission)
+            .flat_map(|map| {
+                let mut local_addresses = Vec::new();
+                let mut addr = map.start;
+
+                while addr + std::mem::size_of::<f64>() as u64 <= map.end {
+                    let mut addrs_to_read = Vec::new();
+                    let mut current_addr = addr;
+
+                    while current_addr + std::mem::size_of::<f64>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                        addrs_to_read.push(current_addr);
+                        current_addr += std::mem::size_of::<f64>() as u64;
+                    }
+
+                    match self.search_memory_double(pid, &addrs_to_read, value) {
+                        Ok(matching_addresses) => {
+                            local_addresses.extend(matching_addresses);
+                        },
+                        Err(_e) => {
+                        }
+                    }
+                    addr = current_addr; // Update addr to continue from the next address
+                }
+                local_addresses
+            })
+            .collect();
+
+        Ok(addresses)
     }
 
     /// get the memory map of a process.
@@ -311,88 +655,8 @@ impl Device {
         f32::from_ne_bytes(buf[0..4].try_into().unwrap())
     }
 
-    fn search_value_int(&self, pid: i32, value: i32, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
-        let maps = self.get_mem_map(pid, false)?
-            .into_iter()
-            .filter(|map| regions.iter().any(|region| region.matches(map)))
-            .collect::<Vec<_>>();
-
-        let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
-            .flat_map(|map| {
-                let mut local_addresses = Vec::new();
-                let mut addr = map.start;
-                while addr < map.end {
-                    let mut buf = [0u8; std::mem::size_of::<i32>()];
-                    if self.read_mem(pid, addr, &mut buf).is_ok() {
-                        let read_value = Device::extract_i32(&buf);
-                        if read_value == value {
-                            local_addresses.push(addr);
-                        }
-                    }
-                    addr += std::mem::size_of::<i32>() as u64;
-                }
-                local_addresses
-            })
-            .collect();
-
-        Ok(addresses)
-    }
-
-    fn search_value_long(&self, pid: i32, value: i64, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
-        let maps = self.get_mem_map(pid, false)?
-            .into_iter()
-            .filter(|map| regions.iter().any(|region| region.matches(map)))
-            .collect::<Vec<_>>();
-
-        let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
-            .flat_map(|map| {
-                let mut local_addresses = Vec::new();
-                let mut addr = map.start;
-                while addr < map.end {
-                    let mut buf = [0u8; std::mem::size_of::<i64>()];
-                    if self.read_mem(pid, addr, &mut buf).is_ok() {
-                        let read_value = Device::extract_i64(&buf);
-                        if read_value == value {
-                            local_addresses.push(addr);
-                        }
-                    }
-                    addr += std::mem::size_of::<i64>() as u64;
-                }
-                local_addresses
-            })
-            .collect();
-
-        Ok(addresses)
-    }
-
-    fn search_value_float(&self, pid: i32, value: f32, regions: Vec<MemoryRegion>) -> Result<Vec<u64>> {
-        let maps = self.get_mem_map(pid, false)?
-            .into_iter()
-            .filter(|map| regions.iter().any(|region| region.matches(map)))
-            .collect::<Vec<_>>();
-
-        let addresses: Vec<u64> = maps.par_iter()
-            .filter(|map| map.read_permission)
-            .flat_map(|map| {
-                let mut local_addresses = Vec::new();
-                let mut addr = map.start;
-                while addr < map.end {
-                    let mut buf = [0u8; std::mem::size_of::<f32>()];
-                    if self.read_mem(pid, addr, &mut buf).is_ok() {
-                        let read_value = Device::extract_f32(&buf);
-                        if read_value == value {
-                            local_addresses.push(addr);
-                        }
-                    }
-                    addr += std::mem::size_of::<f32>() as u64;
-                }
-                local_addresses
-            })
-            .collect();
-
-        Ok(addresses)
+    pub fn extract_f64(buf: &[u8]) -> f64 {
+        f64::from_ne_bytes(buf[0..8].try_into().unwrap())
     }
 
     fn get_maps(&self, pid: i32, regions: Vec<MemoryRegion>) -> Result<Vec<MapsEntry>> {
@@ -546,7 +810,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.1.7", author = "yervant7", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.2.0", author = "yervant7", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -561,7 +825,7 @@ enum Commands {
         addr: String,
         #[arg(help = "Number of bytes to read (must be 4 or 8)")]
         size: usize,
-        #[arg(help = "Data type: int, long, float")]
+        #[arg(help = "Data type: int, long, float, double")]
         data_type: String,
     },
     WriteInt {
@@ -587,6 +851,14 @@ enum Commands {
         addr: String,
         #[arg(help = "Value to write")]
         value: f32,
+    },
+    WriteDouble {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Memory address")]
+        addr: String,
+        #[arg(help = "Value to write")]
+        value: f64,
     },
     WriteAssembly {
         #[arg(help = "Process ID")]
@@ -642,6 +914,16 @@ enum Commands {
         #[arg(help = "Path to save output")]
         path: String,
     },
+    SearchDouble {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Double value to search")]
+        value: f64,
+        #[arg(help = "Memory regions to search (e.g., C_ALLOC,C_BSS, etc.)")]
+        regions: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
     FilterInt {
         #[arg(help = "Process ID")]
         pid: i32,
@@ -671,7 +953,17 @@ enum Commands {
         filename: String,
         #[arg(help = "Path to save output")]
         path: String,
-    }
+    },
+    FilterDouble {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Value to filter")]
+        expected_value: f64,
+        #[arg(help = "Path file to read and filter")]
+        filename: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
 }
 
 fn main() {
@@ -707,6 +999,10 @@ fn main() {
                         }
                         "float" if size == 4 => {
                             let value = Device::extract_f32(&buf);
+                            println!("Value: {}", value);
+                        }
+                        "double" if size == 4 => {
+                            let value = Device::extract_f64(&buf);
                             println!("Value: {}", value);
                         }
                         _ => {
@@ -748,6 +1044,20 @@ fn main() {
             }
         }
         Commands::WriteFloat { pid, addr, value } => {
+            let addr = match u64::from_str_radix(&addr.trim_start_matches("0x"), 16) {
+                Ok(val) => val,
+                Err(_) => {
+                    eprintln!("Invalid hexadecimal address");
+                    return;
+                }
+            };
+            let buf = value.to_ne_bytes();
+            match device.write_mem(pid, addr, &buf) {
+                Ok(_) => println!("Wrote value: {} to address: {:#x}", value, addr),
+                Err(e) => eprintln!("Failed to write memory: {:?}", e),
+            }
+        }
+        Commands::WriteDouble { pid, addr, value } => {
             let addr = match u64::from_str_radix(&addr.trim_start_matches("0x"), 16) {
                 Ok(val) => val,
                 Err(_) => {
@@ -833,6 +1143,7 @@ fn main() {
             }
         }
         Commands::SearchInt { pid, value, regions, path } => {
+            let start = Instant::now();
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
@@ -856,9 +1167,11 @@ fn main() {
                     return;
                 }
             }
-            println!("Search finished check file: {}", path);
+            let duration = start.elapsed();
+            println!("Search finished time {:?} check file: {}", duration, path);
         }
         Commands::SearchLong { pid, value, regions, path } => {
+            let start = Instant::now();
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
@@ -882,9 +1195,11 @@ fn main() {
                     return;
                 }
             }
-            println!("Search finished check file: {}", path);
+            let duration = start.elapsed();
+            println!("Search finished time {:?} check file: {}", duration, path);
         }
         Commands::SearchFloat { pid, value, regions, path } => {
+            let start = Instant::now();
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
@@ -908,7 +1223,36 @@ fn main() {
                     return;
                 }
             }
-            println!("Search finished check file: {}", path);
+            let duration = start.elapsed();
+            println!("Search finished time {:?} check file: {}", duration, path);
+        }
+        Commands::SearchDouble { pid, value, regions, path } => {
+            let start = Instant::now();
+            let regions = regions.split(',')
+                .filter_map(|s| MemoryRegion::from_str(s))
+                .collect::<Vec<_>>();
+            let addresses = match device.search_value_double(pid, value, regions) {
+                Ok(addrs) => addrs,
+                Err(e) => {
+                    eprintln!("Failed to search for float value: {:?}", e);
+                    return;
+                }
+            };
+            let mut file = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+            for addr in &addresses {
+                if let Err(e) = writeln!(file, "{:#x}", addr) {
+                    eprintln!("Failed to write to file: {:?}", e);
+                    return;
+                }
+            }
+            let duration = start.elapsed();
+            println!("Search finished time {:?} check file: {}", duration, path);
         }
         Commands::FilterInt { pid, expected_value, filename, path } => {
             let file = match File::open(&filename) {
@@ -1010,6 +1354,43 @@ fn main() {
                     let mut buf = [0u8; 4];
                     if device.read_mem(pid, address, &mut buf).is_ok() {
                         let value = Device::extract_f32(&buf);
+                        if value == expected_value {
+                            return Some(address);
+                        }
+                    }
+                    None
+                })
+                .collect();
+
+            for address in addresses {
+                writeln!(file2, "{:#x}", address).expect("Failed to write to file");
+            }
+            println!("Filter finished check file: {}", path);
+        }
+        Commands::FilterDouble { pid, expected_value, filename, path } => {
+            let file = match File::open(&filename) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to open file: {:?}", e);
+                    return;
+                }
+            };
+            let mut file2 = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+            let reader = BufReader::new(file);
+            let lines: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
+
+            let addresses: Vec<u64> = lines.par_iter()
+                .filter_map(|line| {
+                    let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
+                    let mut buf = [0u8; 8];
+                    if device.read_mem(pid, address, &mut buf).is_ok() {
+                        let value = Device::extract_f64(&buf);
                         if value == expected_value {
                             return Some(address);
                         }
