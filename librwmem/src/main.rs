@@ -1017,7 +1017,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.2.0", author = "yervant7", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.2.2", author = "yervant7", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -1549,10 +1549,33 @@ fn main() {
                     return;
                 }
             };
-            let reader = BufReader::new(file);
-            let lines: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
+            let mut addresses = Vec::new();
+            let mut skip_next_line = false;
+            let mut skip_first_line = true;
 
-            let addresses: Vec<u64> = lines.par_iter()
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                let line = line.unwrap();
+
+                if skip_first_line {
+                    skip_first_line = false;
+                    continue;
+                }
+
+                if skip_next_line {
+                    skip_next_line = false;
+                    continue;
+                }
+
+                if line.starts_with("===") {
+                    skip_next_line = true;
+                } else {
+                    addresses.push(line);
+                }
+            }
+
+            let addresses: Vec<u64> = addresses.par_iter()
                 .filter_map(|line| {
                     let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
                     let mut buf = [0u8; 4];
@@ -1587,10 +1610,33 @@ fn main() {
                     return;
                 }
             };
-            let reader = BufReader::new(file);
-            let lines: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
+            let mut addresses = Vec::new();
+            let mut skip_next_line = false;
+            let mut skip_first_line = true;
 
-            let addresses: Vec<u64> = lines.par_iter()
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                let line = line.unwrap();
+
+                if skip_first_line {
+                    skip_first_line = false;
+                    continue;
+                }
+
+                if skip_next_line {
+                    skip_next_line = false;
+                    continue;
+                }
+
+                if line.starts_with("===") {
+                    skip_next_line = true;
+                } else {
+                    addresses.push(line);
+                }
+            }
+
+            let addresses: Vec<u64> = addresses.par_iter()
                 .filter_map(|line| {
                     let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
                     let mut buf = [0u8; 8];
@@ -1625,10 +1671,33 @@ fn main() {
                     return;
                 }
             };
-            let reader = BufReader::new(file);
-            let lines: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
+            let mut addresses = Vec::new();
+            let mut skip_next_line = false;
+            let mut skip_first_line = true;
 
-            let addresses: Vec<u64> = lines.par_iter()
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                let line = line.unwrap();
+
+                if skip_first_line {
+                    skip_first_line = false;
+                    continue;
+                }
+
+                if skip_next_line {
+                    skip_next_line = false;
+                    continue;
+                }
+
+                if line.starts_with("===") {
+                    skip_next_line = true;
+                } else {
+                    addresses.push(line);
+                }
+            }
+
+            let addresses: Vec<u64> = addresses.par_iter()
                 .filter_map(|line| {
                     let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
                     let mut buf = [0u8; 4];
@@ -1662,10 +1731,33 @@ fn main() {
                     return;
                 }
             };
-            let reader = BufReader::new(file);
-            let lines: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
+            let mut addresses = Vec::new();
+            let mut skip_next_line = false;
+            let mut skip_first_line = true;
 
-            let addresses: Vec<u64> = lines.par_iter()
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                let line = line.unwrap();
+
+                if skip_first_line {
+                    skip_first_line = false;
+                    continue;
+                }
+
+                if skip_next_line {
+                    skip_next_line = false;
+                    continue;
+                }
+
+                if line.starts_with("===") {
+                    skip_next_line = true;
+                } else {
+                    addresses.push(line);
+                }
+            }
+
+            let addresses: Vec<u64> = addresses.par_iter()
                 .filter_map(|line| {
                     let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
                     let mut buf = [0u8; 8];
