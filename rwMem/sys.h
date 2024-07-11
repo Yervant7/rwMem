@@ -14,7 +14,10 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <linux/version.h>
-
+#include <linux/tty.h>
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(4,14,83))
+#include <linux/sched/mm.h>
+#endif
 #include "api_proxy.h"
 #include "phy_mem.h"
 #include "proc_maps.h"
@@ -32,6 +35,9 @@
 #define IOCTL_MEM_SEARCH_FLOAT _IOWR(MAJOR_NUM, 4, struct SearchParamsFloat)
 #define IOCTL_MEM_SEARCH_LONG _IOWR(MAJOR_NUM, 5, struct SearchParamsLong)
 #define IOCTL_MEM_SEARCH_DOUBLE _IOWR(MAJOR_NUM, 6, struct SearchParamsDouble)
+#define IOCTL_GET_MODULE_RANGE _IOWR(MAJOR_NUM, 7, struct ModuleRange)
+
+#define M_PATH_MAX 256
 
 struct init_device_info {
     char proc_self_status[4096];
@@ -88,6 +94,13 @@ struct SearchParamsDouble {
     size_t num_addresses;
     u64 matching_addresses[200];
     size_t num_matching_addresses;
+};
+
+struct ModuleRange {
+    pid_t pid;
+    char name[256];
+    u64 address_base;
+    u64 address_end;
 };
 
 int rwProcMem_open(struct inode *inode, struct file *filp);

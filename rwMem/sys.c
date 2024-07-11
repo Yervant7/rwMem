@@ -434,6 +434,67 @@ ssize_t rwProcMem_search_double(struct SearchParamsDouble *params) {
     return 0;
 }
 
+// extracted from the internet from some kernel module, I don't know the author
+uint64_t get_module_base(pid_t pid, const char* name)
+{
+	struct task_struct* task;
+	struct mm_struct* mm;
+	struct vm_area_struct *vma;
+	size_t count = 0;
+
+	task = pid_task(find_vpid(pid), PIDTYPE_PID);
+	if (!task)
+		return 0;
+
+	mm = get_task_mm(task);
+	if (!mm)
+		return 0;
+
+	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		char buf[M_PATH_MAX];
+		char *path_nm = "";
+		if (vma->vm_file) {
+			path_nm = file_path(vma->vm_file, buf, M_PATH_MAX-1);
+			if (!strcmp(kbasename(path_nm), name)) {
+				count = vma->vm_start;
+				break;
+			}
+		}
+	}
+	mmput(mm);
+	return count;
+}
+
+uint64_t get_module_end(pid_t pid, const char* name)
+{
+    struct task_struct* task;
+    struct mm_struct* mm;
+    struct vm_area_struct *vma;
+    size_t end_address = 0;
+
+    task = pid_task(find_vpid(pid), PIDTYPE_PID);
+    if (!task)
+        return 0;
+
+    mm = get_task_mm(task);
+    if (!mm)
+        return 0;
+
+    for (vma = mm->mmap; vma; vma = vma->vm_next) {
+        char buf[M_PATH_MAX];
+        char *path_nm = "";
+        if (vma->vm_file) {
+            path_nm = file_path(vma->vm_file, buf, M_PATH_MAX-1);
+            if (!strcmp(kbasename(path_nm), name)) {
+                end_address = vma->vm_end;
+                break;
+            }
+        }
+    }
+    mmput(mm);
+    return end_address;
+}
+
 static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
     switch (cmd) {
     case IOCTL_GET_PROCESS_MAPS_COUNT: {
@@ -627,6 +688,24 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
         if (result < 0) {
             return result;
         }
+
+        if (x_copy_to_user((void *)arg, &params, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        return 0;
+    }
+    case IOCTL_GET_MODULE_RANGE: {
+        struct ModuleRange params;
+        if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
+            return -EINVAL;
+        }
+
+        uint64_t address_base = get_module_base(params.pid, params.name);
+        uint64_t address_end = get_module_end(params.pid, params.name);
+
+        params.address_base = address_base;
+        params.address_end = address_end;
 
         if (x_copy_to_user((void *)arg, &params, sizeof(params))) {
             return -EINVAL;

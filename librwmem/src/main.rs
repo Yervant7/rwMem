@@ -5,7 +5,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Cursor, Read, Write};
 use std::os::unix::io::RawFd;
 use std::path::Path;
-use std::{str};
+use std::{ptr, str};
+use std::ffi::CString;
 use std::time::Instant;
 use byteorder::{NativeEndian, ReadBytesExt};
 use nix::request_code_readwrite;
@@ -28,6 +29,7 @@ const IOCTL_MEM_SEARCH_INT: u8 = 3;
 const IOCTL_MEM_SEARCH_FLOAT: u8 = 4;
 const IOCTL_MEM_SEARCH_LONG: u8 = 5;
 const IOCTL_MEM_SEARCH_DOUBLE: u8 = 6;
+const IOCTL_GET_MODULE_RANGE: u8 = 7;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -77,6 +79,15 @@ struct SearchParamsDouble {
     num_matching_addresses: libc::size_t,
 }
 
+#[repr(C)]
+#[derive(Debug)]
+struct ModuleRange {
+    pid: libc::pid_t,
+    name: [libc::c_char; 256],
+    address_base: u64,
+    address_end: u64,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct MapsEntry {
     pub start: u64,
@@ -106,6 +117,7 @@ enum MemoryRegion {
     CodeSystem,
     Stack,
     Ashmem,
+    Custom,
 }
 
 impl MemoryRegion {
@@ -135,6 +147,7 @@ impl MemoryRegion {
             MemoryRegion::CodeSystem => entry.name.contains("/system"),
             MemoryRegion::Stack => entry.name.contains("[stack]"),
             MemoryRegion::Ashmem => entry.name.contains("/dev/ashmem/dalvik"),
+            MemoryRegion::Custom => entry.name.contains("custom") // not exists
         }
     }
 }
@@ -343,172 +356,316 @@ impl Device {
         Ok(matching_addresses)
     }
 
-    fn search_value_int(&self, pid: i32, value: i32, regions: Vec<MemoryRegion>) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
-        let maps = self.get_mem_map(pid, false)?
-            .into_iter()
-            .filter(|map| regions.iter().any(|region| region.matches(map)))
-            .collect::<Vec<_>>();
+    fn search_value_int(&self, pid: i32, value: i32, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
+        if name == "" {
+            let maps = self.get_mem_map(pid, false)?
+                .into_iter()
+                .filter(|map| regions.iter().any(|region| region.matches(map)))
+                .collect::<Vec<_>>();
 
-        let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
-            .flat_map(|&region| {
-                maps.par_iter()
-                    .filter(|map| region.matches(map) && map.read_permission)
-                    .map(|map| {
-                        let mut local_addresses = Vec::new();
-                        let mut addr = map.start;
+            let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+                .flat_map(|&region| {
+                    maps.par_iter()
+                        .filter(|map| region.matches(map) && map.read_permission)
+                        .map(|map| {
+                            let mut local_addresses = Vec::new();
+                            let mut addr = map.start;
 
-                        while addr + std::mem::size_of::<i32>() as u64 <= map.end {
-                            let mut addrs_to_read = Vec::new();
-                            let mut current_addr = addr;
+                            while addr + std::mem::size_of::<i32>() as u64 <= map.end {
+                                let mut addrs_to_read = Vec::new();
+                                let mut current_addr = addr;
 
-                            while current_addr + std::mem::size_of::<i32>() as u64 <= map.end && addrs_to_read.len() < 200 {
-                                addrs_to_read.push(current_addr);
-                                current_addr += std::mem::size_of::<i32>() as u64;
+                                while current_addr + std::mem::size_of::<i32>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                    addrs_to_read.push(current_addr);
+                                    current_addr += std::mem::size_of::<i32>() as u64;
+                                }
+
+                                match self.search_memory_int(pid, &addrs_to_read, value) {
+                                    Ok(matching_addresses) => {
+                                        local_addresses.extend(matching_addresses);
+                                    },
+                                    Err(_e) => {}
+                                }
+                                addr = current_addr;
                             }
 
-                            match self.search_memory_int(pid, &addrs_to_read, value) {
-                                Ok(matching_addresses) => {
-                                    local_addresses.extend(matching_addresses);
-                                },
-                                Err(_e) => {}
-                            }
-                            addr = current_addr;
+                            (region, local_addresses)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .filter(|(_, addresses)| !addresses.is_empty())
+                .collect();
+
+            Ok(results)
+        } else {
+            let result = unsafe { self.get_module_mem_range(pid, name) };
+            match result {
+                Ok(range_addresses) => {
+                    if range_addresses.is_empty() {
+                        return Err(errors::Error::InvalidInput("Or failed to get range address".to_string()));
+                    }
+
+                    let start = range_addresses[0];
+                    let end = range_addresses[1];
+                    let mut local_addresses = Vec::new();
+                    let mut addr = start;
+                    while addr + std::mem::size_of::<i32>() as u64 <= end {
+                        let mut addrs_to_read = Vec::new();
+                        let mut current_addr = addr;
+
+                        while current_addr + std::mem::size_of::<i32>() as u64 <= end && addrs_to_read.len() < 200 {
+                            addrs_to_read.push(current_addr);
+                            current_addr += std::mem::size_of::<i32>() as u64;
                         }
 
-                        (region, local_addresses)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .filter(|(_, addresses)| !addresses.is_empty())
-            .collect();
+                        match self.search_memory_int(pid, &addrs_to_read, value) {
+                            Ok(matching_addresses) => {
+                                local_addresses.extend(matching_addresses);
+                            },
+                            Err(_e) => {}
+                        }
+                        addr = current_addr;
+                    }
 
-        Ok(results)
+                    Ok(vec![(MemoryRegion::Custom , local_addresses)])
+                },
+                Err(e) => Err(e),
+            }
+        }
     }
 
-    fn search_value_float(&self, pid: i32, value: f32, regions: Vec<MemoryRegion>) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
-        let maps = self.get_mem_map(pid, false)?
-            .into_iter()
-            .filter(|map| regions.iter().any(|region| region.matches(map)))
-            .collect::<Vec<_>>();
+    fn search_value_float(&self, pid: i32, value: f32, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
+        if name == "" {
+            let maps = self.get_mem_map(pid, false)?
+                .into_iter()
+                .filter(|map| regions.iter().any(|region| region.matches(map)))
+                .collect::<Vec<_>>();
 
-        let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
-            .flat_map(|&region| {
-                maps.par_iter()
-                    .filter(|map| region.matches(map) && map.read_permission)
-                    .map(|map| {
-                        let mut local_addresses = Vec::new();
-                        let mut addr = map.start;
+            let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+                .flat_map(|&region| {
+                    maps.par_iter()
+                        .filter(|map| region.matches(map) && map.read_permission)
+                        .map(|map| {
+                            let mut local_addresses = Vec::new();
+                            let mut addr = map.start;
 
-                        while addr + std::mem::size_of::<f32>() as u64 <= map.end {
-                            let mut addrs_to_read = Vec::new();
-                            let mut current_addr = addr;
+                            while addr + std::mem::size_of::<f32>() as u64 <= map.end {
+                                let mut addrs_to_read = Vec::new();
+                                let mut current_addr = addr;
 
-                            while current_addr + std::mem::size_of::<f32>() as u64 <= map.end && addrs_to_read.len() < 200 {
-                                addrs_to_read.push(current_addr);
-                                current_addr += std::mem::size_of::<f32>() as u64;
+                                while current_addr + std::mem::size_of::<f32>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                    addrs_to_read.push(current_addr);
+                                    current_addr += std::mem::size_of::<f32>() as u64;
+                                }
+
+                                match self.search_memory_float(pid, &addrs_to_read, value) {
+                                    Ok(matching_addresses) => {
+                                        local_addresses.extend(matching_addresses);
+                                    },
+                                    Err(_e) => {}
+                                }
+                                addr = current_addr;
                             }
 
-                            match self.search_memory_float(pid, &addrs_to_read, value) {
-                                Ok(matching_addresses) => {
-                                    local_addresses.extend(matching_addresses);
-                                },
-                                Err(_e) => {}
-                            }
-                            addr = current_addr;
+                            (region, local_addresses)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .filter(|(_, addresses)| !addresses.is_empty())
+                .collect();
+
+            Ok(results)
+        } else {
+            let result = unsafe { self.get_module_mem_range(pid, name) };
+            match result {
+                Ok(range_addresses) => {
+                    if range_addresses.is_empty() {
+                        return Err(errors::Error::InvalidInput("Or failed to get range address".to_string()));
+                    }
+
+                    let start = range_addresses[0];
+                    let end = range_addresses[1];
+                    let mut local_addresses = Vec::new();
+                    let mut addr = start;
+                    while addr + std::mem::size_of::<f32>() as u64 <= end {
+                        let mut addrs_to_read = Vec::new();
+                        let mut current_addr = addr;
+
+                        while current_addr + std::mem::size_of::<f32>() as u64 <= end && addrs_to_read.len() < 200 {
+                            addrs_to_read.push(current_addr);
+                            current_addr += std::mem::size_of::<f32>() as u64;
                         }
 
-                        (region, local_addresses)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .filter(|(_, addresses)| !addresses.is_empty())
-            .collect();
+                        match self.search_memory_float(pid, &addrs_to_read, value) {
+                            Ok(matching_addresses) => {
+                                local_addresses.extend(matching_addresses);
+                            },
+                            Err(_e) => {}
+                        }
+                        addr = current_addr;
+                    }
 
-        Ok(results)
+                    Ok(vec![(MemoryRegion::Custom, local_addresses)])
+                },
+                Err(e) => Err(e),
+            }
+        }
     }
 
-    fn search_value_long(&self, pid: i32, value: i64, regions: Vec<MemoryRegion>) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
-        let maps = self.get_mem_map(pid, false)?
-            .into_iter()
-            .filter(|map| regions.iter().any(|region| region.matches(map)))
-            .collect::<Vec<_>>();
+    fn search_value_long(&self, pid: i32, value: i64, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
+        if name == "" {
+            let maps = self.get_mem_map(pid, false)?
+                .into_iter()
+                .filter(|map| regions.iter().any(|region| region.matches(map)))
+                .collect::<Vec<_>>();
 
-        let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
-            .flat_map(|&region| {
-                maps.par_iter()
-                    .filter(|map| region.matches(map) && map.read_permission)
-                    .map(|map| {
-                        let mut local_addresses = Vec::new();
-                        let mut addr = map.start;
+            let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+                .flat_map(|&region| {
+                    maps.par_iter()
+                        .filter(|map| region.matches(map) && map.read_permission)
+                        .map(|map| {
+                            let mut local_addresses = Vec::new();
+                            let mut addr = map.start;
 
-                        while addr + std::mem::size_of::<i64>() as u64 <= map.end {
-                            let mut addrs_to_read = Vec::new();
-                            let mut current_addr = addr;
+                            while addr + std::mem::size_of::<i64>() as u64 <= map.end {
+                                let mut addrs_to_read = Vec::new();
+                                let mut current_addr = addr;
 
-                            while current_addr + std::mem::size_of::<i64>() as u64 <= map.end && addrs_to_read.len() < 200 {
-                                addrs_to_read.push(current_addr);
-                                current_addr += std::mem::size_of::<i64>() as u64;
+                                while current_addr + std::mem::size_of::<i64>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                    addrs_to_read.push(current_addr);
+                                    current_addr += std::mem::size_of::<i64>() as u64;
+                                }
+
+                                match self.search_memory_long(pid, &addrs_to_read, value) {
+                                    Ok(matching_addresses) => {
+                                        local_addresses.extend(matching_addresses);
+                                    },
+                                    Err(_e) => {}
+                                }
+                                addr = current_addr;
                             }
 
-                            match self.search_memory_long(pid, &addrs_to_read, value) {
-                                Ok(matching_addresses) => {
-                                    local_addresses.extend(matching_addresses);
-                                },
-                                Err(_e) => {}
-                            }
-                            addr = current_addr;
+                            (region, local_addresses)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .filter(|(_, addresses)| !addresses.is_empty())
+                .collect();
+
+            Ok(results)
+        } else {
+            let result = unsafe { self.get_module_mem_range(pid, name) };
+            match result {
+                Ok(range_addresses) => {
+                    if range_addresses.is_empty() {
+                        return Err(errors::Error::InvalidInput("Or failed to get range address".to_string()));
+                    }
+
+                    let start = range_addresses[0];
+                    let end = range_addresses[1];
+                    let mut local_addresses = Vec::new();
+                    let mut addr = start;
+                    while addr + std::mem::size_of::<i64>() as u64 <= end {
+                        let mut addrs_to_read = Vec::new();
+                        let mut current_addr = addr;
+
+                        while current_addr + std::mem::size_of::<i64>() as u64 <= end && addrs_to_read.len() < 200 {
+                            addrs_to_read.push(current_addr);
+                            current_addr += std::mem::size_of::<i64>() as u64;
                         }
 
-                        (region, local_addresses)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .filter(|(_, addresses)| !addresses.is_empty())
-            .collect();
+                        match self.search_memory_long(pid, &addrs_to_read, value) {
+                            Ok(matching_addresses) => {
+                                local_addresses.extend(matching_addresses);
+                            },
+                            Err(_e) => {}
+                        }
+                        addr = current_addr;
+                    }
 
-        Ok(results)
+                    Ok(vec![(MemoryRegion::Custom, local_addresses)])
+                },
+                Err(e) => Err(e),
+            }
+        }
     }
 
-    fn search_value_double(&self, pid: i32, value: f64, regions: Vec<MemoryRegion>) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
-        let maps = self.get_mem_map(pid, false)?
-            .into_iter()
-            .filter(|map| regions.iter().any(|region| region.matches(map)))
-            .collect::<Vec<_>>();
+    fn search_value_double(&self, pid: i32, value: f64, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
+        if name == "" {
+            let maps = self.get_mem_map(pid, false)?
+                .into_iter()
+                .filter(|map| regions.iter().any(|region| region.matches(map)))
+                .collect::<Vec<_>>();
 
-        let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
-            .flat_map(|&region| {
-                maps.par_iter()
-                    .filter(|map| region.matches(map) && map.read_permission)
-                    .map(|map| {
-                        let mut local_addresses = Vec::new();
-                        let mut addr = map.start;
+            let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+                .flat_map(|&region| {
+                    maps.par_iter()
+                        .filter(|map| region.matches(map) && map.read_permission)
+                        .map(|map| {
+                            let mut local_addresses = Vec::new();
+                            let mut addr = map.start;
 
-                        while addr + std::mem::size_of::<f64>() as u64 <= map.end {
-                            let mut addrs_to_read = Vec::new();
-                            let mut current_addr = addr;
+                            while addr + std::mem::size_of::<f64>() as u64 <= map.end {
+                                let mut addrs_to_read = Vec::new();
+                                let mut current_addr = addr;
 
-                            while current_addr + std::mem::size_of::<f64>() as u64 <= map.end && addrs_to_read.len() < 200 {
-                                addrs_to_read.push(current_addr);
-                                current_addr += std::mem::size_of::<f64>() as u64;
+                                while current_addr + std::mem::size_of::<f64>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                    addrs_to_read.push(current_addr);
+                                    current_addr += std::mem::size_of::<f64>() as u64;
+                                }
+
+                                match self.search_memory_double(pid, &addrs_to_read, value) {
+                                    Ok(matching_addresses) => {
+                                        local_addresses.extend(matching_addresses);
+                                    },
+                                    Err(_e) => {}
+                                }
+                                addr = current_addr;
                             }
 
-                            match self.search_memory_double(pid, &addrs_to_read, value) {
-                                Ok(matching_addresses) => {
-                                    local_addresses.extend(matching_addresses);
-                                },
-                                Err(_e) => {}
-                            }
-                            addr = current_addr;
+                            (region, local_addresses)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .filter(|(_, addresses)| !addresses.is_empty())
+                .collect();
+
+            Ok(results)
+        } else {
+            let result = unsafe { self.get_module_mem_range(pid, name) };
+            match result {
+                Ok(range_addresses) => {
+                    if range_addresses.is_empty() {
+                        return Err(errors::Error::InvalidInput("Or failed to get range address".to_string()));
+                    }
+
+                    let start = range_addresses[0];
+                    let end = range_addresses[1];
+                    let mut local_addresses = Vec::new();
+                    let mut addr = start;
+                    while addr + std::mem::size_of::<f64>() as u64 <= end {
+                        let mut addrs_to_read = Vec::new();
+                        let mut current_addr = addr;
+
+                        while current_addr + std::mem::size_of::<f64>() as u64 <= end && addrs_to_read.len() < 200 {
+                            addrs_to_read.push(current_addr);
+                            current_addr += std::mem::size_of::<f64>() as u64;
                         }
 
-                        (region, local_addresses)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .filter(|(_, addresses)| !addresses.is_empty())
-            .collect();
+                        match self.search_memory_double(pid, &addrs_to_read, value) {
+                            Ok(matching_addresses) => {
+                                local_addresses.extend(matching_addresses);
+                            },
+                            Err(_e) => {}
+                        }
+                        addr = current_addr;
+                    }
 
-        Ok(results)
+                    Ok(vec![(MemoryRegion::Custom, local_addresses)])
+                },
+                Err(e) => Err(e),
+            }
+        }
     }
 
     /// get the memory map of a process.
@@ -821,6 +978,36 @@ impl Device {
 
         self.write_mem(pid, addr, &machine_code.bytes)
     }
+
+    pub unsafe fn get_module_mem_range(&self, pid: i32, name: String) -> Result<Vec<u64>> {
+        let c_string = CString::new(name);
+        let mut params = ModuleRange {
+            pid,
+            name: [0; 256],
+            address_base: 0,
+            address_end: 0,
+        };
+
+        let c_string = c_string.unwrap();
+        let name_bytes = c_string.as_bytes_with_nul();
+        let name_len = name_bytes.len();
+        ptr::copy_nonoverlapping(name_bytes.as_ptr(), params.name.as_mut_ptr() as *mut u8, name_len);
+
+        let ret = libc::ioctl(
+                self.fd,
+                request_code_readwrite!(RWMEM_MAGIC, IOCTL_GET_MODULE_RANGE, std::mem::size_of::<ModuleRange>()),
+                &mut params as *mut _ as *mut libc::c_void,
+        );
+
+        if ret < 0 {
+            return Err(errors::Error::IoctlFailed);
+        }
+
+        let range_address_base = params.address_base;
+        let range_address_end = params.address_end;
+
+        Ok(vec![range_address_base, range_address_end])
+    }
 }
 
 impl Drop for Device {
@@ -895,6 +1082,12 @@ enum Commands {
         pid: i32,
         #[arg(help = "Memory regions to get map (e.g., C_ALLOC,C_BSS, etc.)")]
         regions: String,
+    },
+    ModuleRange {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "name of module")]
+        name: String,
     },
     Disassemble {
         #[arg(help = "Process ID")]
@@ -1119,6 +1312,13 @@ fn main() {
                 println!("{:?}", map);
             }
         }
+        Commands::ModuleRange { pid, name} => {
+            let result = unsafe {
+                device.get_module_mem_range(pid, name)
+            };
+            let result = result.unwrap();
+            println!("Start: {:#x} End: {:#x}", result[0], result[1]);
+        }
         Commands::Disassemble { pid, addr, path } => {
             let addr = match u64::from_str_radix(&addr.trim_start_matches("0x"), 16) {
                 Ok(val) => val,
@@ -1164,10 +1364,15 @@ fn main() {
         }
         Commands::SearchInt { pid, value, regions, path } => {
             let start = Instant::now();
+            let name = if regions.clone().contains("lib") {
+                regions.clone()
+            } else {
+                "".to_string()
+            };
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
-            let results = match device.search_value_int(pid, value, regions) {
+            let results = match device.search_value_int(pid, value, regions, name) {
                 Ok(results) => results,
                 Err(e) => {
                     eprintln!("Failed to search for int value: {:?}", e);
@@ -1202,10 +1407,15 @@ fn main() {
         }
         Commands::SearchLong { pid, value, regions, path } => {
             let start = Instant::now();
+            let name = if regions.clone().contains("lib") {
+                regions.clone()
+            } else {
+                "".to_string()
+            };
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
-            let results = match device.search_value_long(pid, value, regions) {
+            let results = match device.search_value_long(pid, value, regions, name) {
                 Ok(results) => results,
                 Err(e) => {
                     eprintln!("Failed to search for long value: {:?}", e);
@@ -1240,10 +1450,15 @@ fn main() {
         }
         Commands::SearchFloat { pid, value, regions, path } => {
             let start = Instant::now();
+            let name = if regions.clone().contains("lib") {
+                regions.clone()
+            } else {
+                "".to_string()
+            };
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
-            let results = match device.search_value_float(pid, value, regions) {
+            let results = match device.search_value_float(pid, value, regions, name) {
                 Ok(results) => results,
                 Err(e) => {
                     eprintln!("Failed to search for float value: {:?}", e);
@@ -1278,10 +1493,15 @@ fn main() {
         }
         Commands::SearchDouble { pid, value, regions, path } => {
             let start = Instant::now();
+            let name = if regions.clone().contains("lib") {
+                regions.clone()
+            } else {
+                "".to_string()
+            };
             let regions = regions.split(',')
                 .filter_map(|s| MemoryRegion::from_str(s))
                 .collect::<Vec<_>>();
-            let results = match device.search_value_double(pid, value, regions) {
+            let results = match device.search_value_double(pid, value, regions, name) {
                 Ok(results) => results,
                 Err(e) => {
                     eprintln!("Failed to search for float value: {:?}", e);
