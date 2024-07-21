@@ -7,6 +7,7 @@ use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::{ptr, str};
 use std::ffi::CString;
+use std::str::Split;
 use std::time::Instant;
 use byteorder::{NativeEndian, ReadBytesExt};
 use nix::request_code_readwrite;
@@ -668,6 +669,258 @@ impl Device {
         }
     }
 
+    fn search_values_group_int(&self, pid: i32, values: Split<char>, regions: Vec<MemoryRegion>, name: String) -> Vec<Vec<(u64, i32)>> {
+        let parsed_values: Vec<i32> = values.map(|v| v.parse().expect("error converting to number")).collect();
+        let initial_value_addrs = self.search_value_int(pid, parsed_values[0], regions.clone(), name.clone()).expect("error searching group numbers");
+        let mut result = Vec::new();
+        let mut buf = vec![0u8; 4];
+
+        for (_region, addrs) in initial_value_addrs.clone() {
+            for addr in addrs {
+                let mut res = Vec::new();
+
+                for offset in (1..=500).rev() {
+                    let current_addr = addr.wrapping_sub(offset * 4);
+                    match self.read_mem(pid, current_addr, &mut buf) {
+                        Ok(_) => {
+                            let value = Device::extract_i32(&buf);
+                            if parsed_values.contains(&value) {
+                                res.push((current_addr, value));
+                            }
+                        }
+                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                    }
+                }
+
+                match self.read_mem(pid, addr, &mut buf) {
+                    Ok(_) => {
+                        let value = Device::extract_i32(&buf);
+                        if parsed_values.contains(&value) {
+                            res.push((addr, value));
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+                }
+
+                for offset in 1..=500 {
+                    let current_addr = addr.wrapping_add(offset * 4);
+                    match self.read_mem(pid, current_addr, &mut buf) {
+                        Ok(_) => {
+                            let value = Device::extract_i32(&buf);
+                            if parsed_values.contains(&value) {
+                                res.push((current_addr, value));
+                            }
+                        }
+                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                    }
+                }
+
+                let mut all_values_found = true;
+                for &parsed_value in &parsed_values {
+                    if !res.iter().any(|&(_, v)| v == parsed_value) {
+                        all_values_found = false;
+                        break;
+                    }
+                }
+
+                if all_values_found {
+                    result.push(res);
+                }
+            }
+        }
+
+        result
+    }
+
+    fn search_values_group_long(&self, pid: i32, values: Split<char>, regions: Vec<MemoryRegion>, name: String) -> Vec<Vec<(u64, i64)>> {
+        let parsed_values: Vec<i64> = values.map(|v| v.parse().expect("error converting to number")).collect();
+        let initial_value_addrs = self.search_value_long(pid, parsed_values[0], regions.clone(), name.clone()).expect("error searching group numbers");
+        let mut result = Vec::new();
+        let mut buf = vec![0u8; 8];
+
+        for (_region, addrs) in initial_value_addrs.clone() {
+            for addr in addrs {
+                let mut res = Vec::new();
+
+                for offset in (1..=500).rev() {
+                    let current_addr = addr.wrapping_sub(offset * 8);
+                    match self.read_mem(pid, current_addr, &mut buf) {
+                        Ok(_) => {
+                            let value = Device::extract_i64(&buf);
+                            if parsed_values.contains(&value) {
+                                res.push((current_addr, value));
+                            }
+                        }
+                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                    }
+                }
+
+                match self.read_mem(pid, addr, &mut buf) {
+                    Ok(_) => {
+                        let value = Device::extract_i64(&buf);
+                        if parsed_values.contains(&value) {
+                            res.push((addr, value));
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+                }
+
+                for offset in 1..=500 {
+                    let current_addr = addr.wrapping_add(offset * 8);
+                    match self.read_mem(pid, current_addr, &mut buf) {
+                        Ok(_) => {
+                            let value = Device::extract_i64(&buf);
+                            if parsed_values.contains(&value) {
+                                res.push((current_addr, value));
+                            }
+                        }
+                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                    }
+                }
+
+                let mut all_values_found = true;
+                for &parsed_value in &parsed_values {
+                    if !res.iter().any(|&(_, v)| v == parsed_value) {
+                        all_values_found = false;
+                        break;
+                    }
+                }
+
+                if all_values_found {
+                    result.push(res);
+                }
+            }
+        }
+
+        result
+    }
+
+    fn search_values_group_float(&self, pid: i32, values: Split<char>, regions: Vec<MemoryRegion>, name: String) -> Vec<Vec<(u64, f32)>> {
+        let parsed_values: Vec<f32> = values.map(|v| v.parse().expect("error converting to number")).collect();
+        let initial_value_addrs = self.search_value_float(pid, parsed_values[0], regions.clone(), name.clone()).expect("error searching group numbers");
+        let mut result = Vec::new();
+        let mut buf = vec![0u8; 4];
+
+        for (_region, addrs) in initial_value_addrs.clone() {
+            for addr in addrs {
+                let mut res = Vec::new();
+
+                for offset in (1..=500).rev() {
+                    let current_addr = addr.wrapping_sub(offset * 4);
+                    match self.read_mem(pid, current_addr, &mut buf) {
+                        Ok(_) => {
+                            let value = Device::extract_f32(&buf);
+                            if parsed_values.contains(&value) {
+                                res.push((current_addr, value));
+                            }
+                        }
+                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                    }
+                }
+
+                match self.read_mem(pid, addr, &mut buf) {
+                    Ok(_) => {
+                        let value = Device::extract_f32(&buf);
+                        if parsed_values.contains(&value) {
+                            res.push((addr, value));
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+                }
+
+                for offset in 1..=500 {
+                    let current_addr = addr.wrapping_add(offset * 4);
+                    match self.read_mem(pid, current_addr, &mut buf) {
+                        Ok(_) => {
+                            let value = Device::extract_f32(&buf);
+                            if parsed_values.contains(&value) {
+                                res.push((current_addr, value));
+                            }
+                        }
+                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                    }
+                }
+
+                let mut all_values_found = true;
+                for &parsed_value in &parsed_values {
+                    if !res.iter().any(|&(_, v)| v == parsed_value) {
+                        all_values_found = false;
+                        break;
+                    }
+                }
+
+                if all_values_found {
+                    result.push(res);
+                }
+            }
+        }
+
+        result
+    }
+
+    fn search_values_group_double(&self, pid: i32, values: Split<char>, regions: Vec<MemoryRegion>, name: String) -> Vec<Vec<(u64, f64)>> {
+        let parsed_values: Vec<f64> = values.map(|v| v.parse().expect("error converting to number")).collect();
+        let initial_value_addrs = self.search_value_double(pid, parsed_values[0], regions.clone(), name.clone()).expect("error searching group numbers");
+        let mut result = Vec::new();
+        let mut buf = vec![0u8; 8];
+
+        for (_region, addrs) in initial_value_addrs.clone() {
+            for addr in addrs {
+                let mut res = Vec::new();
+
+                for offset in (1..=500).rev() {
+                    let current_addr = addr.wrapping_sub(offset * 8);
+                    match self.read_mem(pid, current_addr, &mut buf) {
+                        Ok(_) => {
+                            let value = Device::extract_f64(&buf);
+                            if parsed_values.contains(&value) {
+                                res.push((current_addr, value));
+                            }
+                        }
+                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                    }
+                }
+
+                match self.read_mem(pid, addr, &mut buf) {
+                    Ok(_) => {
+                        let value = Device::extract_f64(&buf);
+                        if parsed_values.contains(&value) {
+                            res.push((addr, value));
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+                }
+
+                for offset in 1..=500 {
+                    let current_addr = addr.wrapping_add(offset * 8);
+                    match self.read_mem(pid, current_addr, &mut buf) {
+                        Ok(_) => {
+                            let value = Device::extract_f64(&buf);
+                            if parsed_values.contains(&value) {
+                                res.push((current_addr, value));
+                            }
+                        }
+                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                    }
+                }
+
+                let mut all_values_found = true;
+                for &parsed_value in &parsed_values {
+                    if !res.iter().any(|&(_, v)| v == parsed_value) {
+                        all_values_found = false;
+                        break;
+                    }
+                }
+
+                if all_values_found {
+                    result.push(res);
+                }
+            }
+        }
+
+        result
+    }
+
     /// get the memory map of a process.
     pub fn get_mem_map(&self, pid: i32, phy_only: bool) -> Result<Vec<MapsEntry>> {
         let count = self.get_mem_map_count(pid)?;
@@ -1017,7 +1270,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.2.2", author = "yervant7", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.3.5", author = "yervant7", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -1097,6 +1350,46 @@ enum Commands {
         #[arg(help = "Path to save output")]
         path: String,
     },
+    SearchGroupInt {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "values")]
+        values: String,
+        #[arg(help = "Memory regions to search (e.g., C_ALLOC,C_BSS, etc.)")]
+        regions: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
+    SearchGroupLong {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "values")]
+        values: String,
+        #[arg(help = "Memory regions to search (e.g., C_ALLOC,C_BSS, etc.)")]
+        regions: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
+    SearchGroupFloat {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "values")]
+        values: String,
+        #[arg(help = "Memory regions to search (e.g., C_ALLOC,C_BSS, etc.)")]
+        regions: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
+    SearchGroupDouble {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "values")]
+        values: String,
+        #[arg(help = "Memory regions to search (e.g., C_ALLOC,C_BSS, etc.)")]
+        regions: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
     SearchInt {
         #[arg(help = "Process ID")]
         pid: i32,
@@ -1172,6 +1465,46 @@ enum Commands {
         pid: i32,
         #[arg(help = "Value to filter")]
         expected_value: f64,
+        #[arg(help = "Path file to read and filter")]
+        filename: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
+    FilterGroupInt {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Value to filter")]
+        expected_value: String,
+        #[arg(help = "Path file to read and filter")]
+        filename: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
+    FilterGroupLong {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Value to filter")]
+        expected_value: String,
+        #[arg(help = "Path file to read and filter")]
+        filename: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
+    FilterGroupFloat {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Value to filter")]
+        expected_value: String,
+        #[arg(help = "Path file to read and filter")]
+        filename: String,
+        #[arg(help = "Path to save output")]
+        path: String,
+    },
+    FilterGroupDouble {
+        #[arg(help = "Process ID")]
+        pid: i32,
+        #[arg(help = "Value to filter")]
+        expected_value: String,
         #[arg(help = "Path file to read and filter")]
         filename: String,
         #[arg(help = "Path to save output")]
@@ -1357,10 +1690,193 @@ fn main() {
                             }
                         }
                         println!("Disassemble64 finished check file: {}", path);
+                        match device.disassemble_32(pid, addr) {
+                            Ok(instructions) => {
+                                for instruction in instructions {
+                                    if let Err(e) = writeln!(file, "{}", instruction) {
+                                        eprintln!("Failed to write to file: {:?}", e);
+                                        return;
+                                    }
+                                }
+                                println!("Disassemble32 finished check file: {}", path);
+                            }
+                            Err(e) => eprintln!("Failed to disassemble memory: {:?}", e),
+                        }
                     }
                 }
                 Err(e) => eprintln!("Failed to disassemble memory: {:?}", e),
             }
+        }
+        Commands::SearchGroupInt { pid, values, regions, path } => {
+            let start = Instant::now();
+
+            let name = if regions.contains("lib") {
+                regions.to_string()
+            } else {
+                "".to_string()
+            };
+
+            let regions = regions.split(',')
+                .filter_map(|s| MemoryRegion::from_str(s))
+                .collect::<Vec<_>>();
+
+            if values.contains(";") {
+                println!("valid values")
+            } else {
+                eprintln!("Invalid values");
+                return;
+            }
+            let values = values.split(';');
+
+            let results = device.search_values_group_int(pid, values, regions, name);
+
+            let mut file = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+
+            for vector in results {
+                for (address, value) in vector {
+                    if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
+                        eprintln!("Failed to write to file: {:?}", e);
+                        return;
+                    }
+                }
+            }
+            let duration = start.elapsed();
+            println!("Search finished time {:?} check file: {}", duration, path);
+        }
+        Commands::SearchGroupLong { pid, values, regions, path } => {
+            let start = Instant::now();
+
+            let name = if regions.contains("lib") {
+                regions.to_string()
+            } else {
+                "".to_string()
+            };
+
+            let regions = regions.split(',')
+                .filter_map(|s| MemoryRegion::from_str(s))
+                .collect::<Vec<_>>();
+
+            if values.contains(";") {
+                println!("valid values")
+            } else {
+                eprintln!("Invalid values");
+                return;
+            }
+
+            let values = values.split(';');
+
+            let results = device.search_values_group_long(pid, values, regions, name);
+
+            let mut file = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+
+            for vector in results {
+                for (address, value) in vector {
+                    if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
+                        eprintln!("Failed to write to file: {:?}", e);
+                        return;
+                    }
+                }
+            }
+            let duration = start.elapsed();
+            println!("Search finished time {:?} check file: {}", duration, path);
+        }
+        Commands::SearchGroupFloat { pid, values, regions, path } => {
+            let start = Instant::now();
+
+            let name = if regions.contains("lib") {
+                regions.to_string()
+            } else {
+                "".to_string()
+            };
+
+            let regions = regions.split(',')
+                .filter_map(|s| MemoryRegion::from_str(s))
+                .collect::<Vec<_>>();
+
+            if values.contains(";") {
+                println!("valid values")
+            } else {
+                eprintln!("Invalid values");
+                return;
+            }
+
+            let values = values.split(';');
+
+            let results = device.search_values_group_float(pid, values, regions, name);
+
+            let mut file = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+
+            for vector in results {
+                for (address, value) in vector {
+                    if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
+                        eprintln!("Failed to write to file: {:?}", e);
+                        return;
+                    }
+                }
+            }
+            let duration = start.elapsed();
+            println!("Search finished time {:?} check file: {}", duration, path);
+        }
+        Commands::SearchGroupDouble { pid, values, regions, path } => {
+            let start = Instant::now();
+
+            let name = if regions.contains("lib") {
+                regions.to_string()
+            } else {
+                "".to_string()
+            };
+
+            let regions = regions.split(',')
+                .filter_map(|s| MemoryRegion::from_str(s))
+                .collect::<Vec<_>>();
+
+            if values.contains(";") {
+                println!("valid values")
+            } else {
+                eprintln!("Invalid values");
+                return;
+            }
+
+            let values = values.split(';');
+
+            let results = device.search_values_group_double(pid, values, regions, name);
+
+            let mut file = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+
+            for vector in results {
+                for (address, value) in vector {
+                    if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
+                        eprintln!("Failed to write to file: {:?}", e);
+                        return;
+                    }
+                }
+            }
+            let duration = start.elapsed();
+            println!("Search finished time {:?} check file: {}", duration, path);
         }
         Commands::SearchInt { pid, value, regions, path } => {
             let start = Instant::now();
@@ -1773,6 +2289,221 @@ fn main() {
 
             for address in addresses {
                 writeln!(file2, "{:#x}", address).expect("Failed to write to file");
+            }
+            println!("Filter finished check file: {}", path);
+        }
+        Commands::FilterGroupInt { pid, expected_value, filename, path } => {
+            let file = match File::open(&filename) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to open file: {:?}", e);
+                    return;
+                }
+            };
+            let mut file2 = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+
+            let mut addresses = Vec::new();
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                match line {
+                    Ok(line) => {
+                        let mut tmp = line.split_whitespace();
+                        if let Some(address_str) = tmp.next() {
+                            addresses.push(address_str.to_string());
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading line: {:?}", e),
+                }
+            }
+
+            let values = expected_value.split(";");
+
+            let parsed_values: Vec<i32> = values.map(|v| v.parse().expect("error converting to number")).collect();
+
+            let result: Vec<(u64, i32)> = addresses.par_iter()
+                .filter_map(|line| {
+                    let address = u64::from_str_radix(line.trim_start_matches("0x"), 16).ok()?;
+                    let mut buf = [0u8; 4];
+                    if device.read_mem(pid, address, &mut buf).is_ok() {
+                        let value = Device::extract_i32(&buf);
+                        if parsed_values.contains(&value) {
+                            return Some((address, value));
+                        }
+                    }
+                    None
+                })
+                .collect();
+
+            for (address, value) in result {
+                writeln!(file2, "{:#x} {}", address, value).expect("Failed to write to file");
+            }
+            println!("Filter finished check file: {}", path);
+        }
+
+        Commands::FilterGroupLong { pid, expected_value, filename, path } => {
+            let file = match File::open(&filename) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to open file: {:?}", e);
+                    return;
+                }
+            };
+            let mut file2 = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+            let mut addresses = Vec::new();
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                match line {
+                    Ok(line) => {
+                        let mut tmp = line.split_whitespace();
+                        if let Some(address_str) = tmp.next() {
+                            addresses.push(address_str.to_string());
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading line: {:?}", e),
+                }
+            }
+
+            let values = expected_value.split(";");
+
+            let parsed_values: Vec<i64> = values.map(|v| v.parse().expect("error converting to number")).collect();
+
+            let result: Vec<(u64, i64)> = addresses.par_iter()
+                .filter_map(|line| {
+                    let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
+                    let mut buf = [0u8; 8];
+                    if device.read_mem(pid, address, &mut buf).is_ok() {
+                        let value = Device::extract_i64(&buf);
+                        if parsed_values.contains(&value) {
+                            return Some((address, value));
+                        }
+                    }
+                    None
+                })
+                .collect();
+
+            for (address, value) in result {
+                writeln!(file2, "{:#x} {}", address, value).expect("Failed to write to file");
+            }
+            println!("Filter finished check file: {}", path);
+        }
+
+        Commands::FilterGroupFloat { pid, expected_value, filename, path } => {
+            let file = match File::open(&filename) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to open file: {:?}", e);
+                    return;
+                }
+            };
+            let mut file2 = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+            let mut addresses = Vec::new();
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                match line {
+                    Ok(line) => {
+                        let mut tmp = line.split_whitespace();
+                        if let Some(address_str) = tmp.next() {
+                            addresses.push(address_str.to_string());
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading line: {:?}", e),
+                }
+            }
+
+            let values = expected_value.split(";");
+
+            let parsed_values: Vec<f32> = values.map(|v| v.parse().expect("error converting to number")).collect();
+
+            let result: Vec<(u64, f32)> = addresses.par_iter()
+                .filter_map(|line| {
+                    let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
+                    let mut buf = [0u8; 4];
+                    if device.read_mem(pid, address, &mut buf).is_ok() {
+                        let value = Device::extract_f32(&buf);
+                        if parsed_values.contains(&value) {
+                            return Some((address, value));
+                        }
+                    }
+                    None
+                })
+                .collect();
+
+            for (address, value) in result {
+                writeln!(file2, "{:#x} {}", address, value).expect("Failed to write to file");
+            }
+            println!("Filter finished check file: {}", path);
+        }
+        Commands::FilterGroupDouble { pid, expected_value, filename, path } => {
+            let file = match File::open(&filename) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to open file: {:?}", e);
+                    return;
+                }
+            };
+            let mut file2 = match File::create(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {:?}", e);
+                    return;
+                }
+            };
+            let mut addresses = Vec::new();
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                match line {
+                    Ok(line) => {
+                        let mut tmp = line.split_whitespace();
+                        if let Some(address_str) = tmp.next() {
+                            addresses.push(address_str.to_string());
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading line: {:?}", e),
+                }
+            }
+
+            let values = expected_value.split(";");
+
+            let parsed_values: Vec<f64> = values.map(|v| v.parse().expect("error converting to number")).collect();
+
+            let result: Vec<(u64, f64)> = addresses.par_iter()
+                .filter_map(|line| {
+                    let address = u64::from_str_radix(&line.trim_start_matches("0x"), 16).ok()?;
+                    let mut buf = [0u8; 8];
+                    if device.read_mem(pid, address, &mut buf).is_ok() {
+                        let value = Device::extract_f64(&buf);
+                        if parsed_values.contains(&value) {
+                            return Some((address, value));
+                        }
+                    }
+                    None
+                })
+                .collect();
+
+            for (address, value) in result {
+                writeln!(file2, "{:#x} {}", address, value).expect("Failed to write to file");
             }
             println!("Filter finished check file: {}", path);
         }
