@@ -679,7 +679,7 @@ impl Device {
             for addr in addrs {
                 let mut res = Vec::new();
 
-                for offset in (1..=500).rev() {
+                for offset in (1..=700).rev() {
                     let current_addr = addr.wrapping_sub(offset * 4);
                     match self.read_mem(pid, current_addr, &mut buf) {
                         Ok(_) => {
@@ -702,7 +702,7 @@ impl Device {
                     Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
                 }
 
-                for offset in 1..=500 {
+                for offset in 1..=700 {
                     let current_addr = addr.wrapping_add(offset * 4);
                     match self.read_mem(pid, current_addr, &mut buf) {
                         Ok(_) => {
@@ -715,13 +715,7 @@ impl Device {
                     }
                 }
 
-                let mut all_values_found = true;
-                for &parsed_value in &parsed_values {
-                    if !res.iter().any(|&(_, v)| v == parsed_value) {
-                        all_values_found = false;
-                        break;
-                    }
-                }
+                let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
 
                 if all_values_found {
                     result.push(res);
@@ -742,7 +736,7 @@ impl Device {
             for addr in addrs {
                 let mut res = Vec::new();
 
-                for offset in (1..=500).rev() {
+                for offset in (1..=700).rev() {
                     let current_addr = addr.wrapping_sub(offset * 8);
                     match self.read_mem(pid, current_addr, &mut buf) {
                         Ok(_) => {
@@ -765,7 +759,7 @@ impl Device {
                     Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
                 }
 
-                for offset in 1..=500 {
+                for offset in 1..=700 {
                     let current_addr = addr.wrapping_add(offset * 8);
                     match self.read_mem(pid, current_addr, &mut buf) {
                         Ok(_) => {
@@ -778,13 +772,7 @@ impl Device {
                     }
                 }
 
-                let mut all_values_found = true;
-                for &parsed_value in &parsed_values {
-                    if !res.iter().any(|&(_, v)| v == parsed_value) {
-                        all_values_found = false;
-                        break;
-                    }
-                }
+                let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
 
                 if all_values_found {
                     result.push(res);
@@ -805,7 +793,7 @@ impl Device {
             for addr in addrs {
                 let mut res = Vec::new();
 
-                for offset in (1..=500).rev() {
+                for offset in (1..=700).rev() {
                     let current_addr = addr.wrapping_sub(offset * 4);
                     match self.read_mem(pid, current_addr, &mut buf) {
                         Ok(_) => {
@@ -828,7 +816,7 @@ impl Device {
                     Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
                 }
 
-                for offset in 1..=500 {
+                for offset in 1..=700 {
                     let current_addr = addr.wrapping_add(offset * 4);
                     match self.read_mem(pid, current_addr, &mut buf) {
                         Ok(_) => {
@@ -841,13 +829,7 @@ impl Device {
                     }
                 }
 
-                let mut all_values_found = true;
-                for &parsed_value in &parsed_values {
-                    if !res.iter().any(|&(_, v)| v == parsed_value) {
-                        all_values_found = false;
-                        break;
-                    }
-                }
+                let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
 
                 if all_values_found {
                     result.push(res);
@@ -868,7 +850,7 @@ impl Device {
             for addr in addrs {
                 let mut res = Vec::new();
 
-                for offset in (1..=500).rev() {
+                for offset in (1..=700).rev() {
                     let current_addr = addr.wrapping_sub(offset * 8);
                     match self.read_mem(pid, current_addr, &mut buf) {
                         Ok(_) => {
@@ -891,7 +873,7 @@ impl Device {
                     Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
                 }
 
-                for offset in 1..=500 {
+                for offset in 1..=700 {
                     let current_addr = addr.wrapping_add(offset * 8);
                     match self.read_mem(pid, current_addr, &mut buf) {
                         Ok(_) => {
@@ -904,13 +886,7 @@ impl Device {
                     }
                 }
 
-                let mut all_values_found = true;
-                for &parsed_value in &parsed_values {
-                    if !res.iter().any(|&(_, v)| v == parsed_value) {
-                        all_values_found = false;
-                        break;
-                    }
-                }
+                let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
 
                 if all_values_found {
                     result.push(res);
@@ -1270,7 +1246,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.3.5", author = "yervant7", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.3.6", author = "yervant7", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
