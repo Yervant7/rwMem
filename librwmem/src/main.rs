@@ -118,7 +118,6 @@ enum MemoryRegion {
     CodeSystem,
     Stack,
     Ashmem,
-    Custom,
 }
 
 impl MemoryRegion {
@@ -148,7 +147,6 @@ impl MemoryRegion {
             MemoryRegion::CodeSystem => entry.name.contains("/system"),
             MemoryRegion::Stack => entry.name.contains("[stack]"),
             MemoryRegion::Ashmem => entry.name.contains("/dev/ashmem/dalvik"),
-            MemoryRegion::Custom => entry.name.contains("custom") // not exists
         }
     }
 }
@@ -390,9 +388,9 @@ impl Device {
                                 addr = current_addr;
                             }
 
-                            local_addresses.into_iter()
+                            local_addresses.into_par_iter()
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<u64>>()
                 })
                 .collect();
 
@@ -467,9 +465,9 @@ impl Device {
                                 addr = current_addr;
                             }
 
-                            local_addresses.into_iter()
+                            local_addresses.into_par_iter()
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<u64>>()
                 })
                 .collect();
 
@@ -544,9 +542,9 @@ impl Device {
                                 addr = current_addr;
                             }
 
-                            local_addresses.into_iter()
+                            local_addresses.into_par_iter()
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<u64>>()
                 })
                 .collect();
 
@@ -621,9 +619,9 @@ impl Device {
                                 addr = current_addr;
                             }
 
-                            local_addresses.into_iter()
+                            local_addresses.into_par_iter()
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<u64>>()
                 })
                 .collect();
 
@@ -671,7 +669,7 @@ impl Device {
         let mut result = Vec::new();
         let mut buf = vec![0u8; 4];
 
-        for (addr) in initial_value_addrs.clone() {
+        for addr in initial_value_addrs.clone() {
             let mut res = Vec::new();
 
             for offset in (1..=700).rev() {
@@ -726,7 +724,7 @@ impl Device {
         let mut result = Vec::new();
         let mut buf = vec![0u8; 8];
 
-        for (addr) in initial_value_addrs.clone() {
+        for addr in initial_value_addrs.clone() {
             let mut res = Vec::new();
 
             for offset in (1..=700).rev() {
@@ -780,7 +778,7 @@ impl Device {
         let mut result = Vec::new();
         let mut buf = vec![0u8; 4];
 
-        for (addr) in initial_value_addrs.clone() {
+        for addr in initial_value_addrs.clone() {
             let mut res = Vec::new();
 
             for offset in (1..=700).rev() {
@@ -834,7 +832,7 @@ impl Device {
         let mut result = Vec::new();
         let mut buf = vec![0u8; 8];
 
-        for (addr) in initial_value_addrs.clone() {
+        for addr in initial_value_addrs.clone() {
             let mut res = Vec::new();
 
             for offset in (1..=700).rev() {
@@ -1231,7 +1229,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.3.6", author = "yervant7", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.3.7", author = "yervant7", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -1288,8 +1286,8 @@ enum Commands {
         addr: String,
         #[arg(help = "Code assembly to write")]
         assembly_code: String,
-        #[arg(help = "is 64 bits?")]
-        is_64_bits: bool,
+        #[arg(help = "is 64 bits? (64 or 32)")]
+        is_64_bits: String,
     },
     Maps {
         #[arg(help = "Process ID")]
@@ -1586,7 +1584,8 @@ fn main() {
                     return;
                 }
             };
-            match device.write_assembly(pid, addr, assembly_code.clone(), is_64_bits) {
+            let is_64_bit = if is_64_bits == "64" {true} else {false};
+            match device.write_assembly(pid, addr, assembly_code.clone(), is_64_bit) {
                 Ok(_) => println!("Wrote code: {} to address: {:#x}", assembly_code, addr),
                 Err(e) => eprintln!("Failed to write memory: {:?}", e),
             }
@@ -1863,7 +1862,7 @@ fn main() {
                     return;
                 }
             };
-            for (address) in results {
+            for address in results {
                 if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
@@ -1896,7 +1895,7 @@ fn main() {
                     return;
                 }
             };
-            for (address) in results {
+            for address in results {
                 if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
@@ -1929,7 +1928,7 @@ fn main() {
                     return;
                 }
             };
-            for (address) in results {
+            for address in results {
                 if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
@@ -1962,7 +1961,7 @@ fn main() {
                     return;
                 }
             };
-            for (address) in results {
+            for address in results {
                 if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
