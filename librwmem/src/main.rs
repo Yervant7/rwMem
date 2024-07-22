@@ -357,18 +357,18 @@ impl Device {
         Ok(matching_addresses)
     }
 
-    fn search_value_int(&self, pid: i32, value: i32, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
+    fn search_value_int(&self, pid: i32, value: i32, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<u64>> {
         if name == "" {
             let maps = self.get_mem_map(pid, false)?
                 .into_iter()
                 .filter(|map| regions.iter().any(|region| region.matches(map)))
                 .collect::<Vec<_>>();
 
-            let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+            let results: Vec<u64> = regions.par_iter()
                 .flat_map(|&region| {
                     maps.par_iter()
                         .filter(|map| region.matches(map) && map.read_permission)
-                        .map(|map| {
+                        .flat_map(|map| {
                             let mut local_addresses = Vec::new();
                             let mut addr = map.start;
 
@@ -390,11 +390,10 @@ impl Device {
                                 addr = current_addr;
                             }
 
-                            (region, local_addresses)
+                            local_addresses.into_iter()
                         })
                         .collect::<Vec<_>>()
                 })
-                .filter(|(_, addresses)| !addresses.is_empty())
                 .collect();
 
             Ok(results)
@@ -428,25 +427,25 @@ impl Device {
                         addr = current_addr;
                     }
 
-                    Ok(vec![(MemoryRegion::Custom , local_addresses)])
+                    Ok(local_addresses)
                 },
                 Err(e) => Err(e),
             }
         }
     }
 
-    fn search_value_float(&self, pid: i32, value: f32, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
+    fn search_value_float(&self, pid: i32, value: f32, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<u64>> {
         if name == "" {
             let maps = self.get_mem_map(pid, false)?
                 .into_iter()
                 .filter(|map| regions.iter().any(|region| region.matches(map)))
                 .collect::<Vec<_>>();
 
-            let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+            let results: Vec<u64> = regions.par_iter()
                 .flat_map(|&region| {
                     maps.par_iter()
                         .filter(|map| region.matches(map) && map.read_permission)
-                        .map(|map| {
+                        .flat_map(|map| {
                             let mut local_addresses = Vec::new();
                             let mut addr = map.start;
 
@@ -468,11 +467,10 @@ impl Device {
                                 addr = current_addr;
                             }
 
-                            (region, local_addresses)
+                            local_addresses.into_iter()
                         })
                         .collect::<Vec<_>>()
                 })
-                .filter(|(_, addresses)| !addresses.is_empty())
                 .collect();
 
             Ok(results)
@@ -506,25 +504,25 @@ impl Device {
                         addr = current_addr;
                     }
 
-                    Ok(vec![(MemoryRegion::Custom, local_addresses)])
+                    Ok(local_addresses)
                 },
                 Err(e) => Err(e),
             }
         }
     }
 
-    fn search_value_long(&self, pid: i32, value: i64, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
+    fn search_value_long(&self, pid: i32, value: i64, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<u64>> {
         if name == "" {
             let maps = self.get_mem_map(pid, false)?
                 .into_iter()
                 .filter(|map| regions.iter().any(|region| region.matches(map)))
                 .collect::<Vec<_>>();
 
-            let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+            let results: Vec<u64> = regions.par_iter()
                 .flat_map(|&region| {
                     maps.par_iter()
                         .filter(|map| region.matches(map) && map.read_permission)
-                        .map(|map| {
+                        .flat_map(|map| {
                             let mut local_addresses = Vec::new();
                             let mut addr = map.start;
 
@@ -546,11 +544,10 @@ impl Device {
                                 addr = current_addr;
                             }
 
-                            (region, local_addresses)
+                            local_addresses.into_iter()
                         })
                         .collect::<Vec<_>>()
                 })
-                .filter(|(_, addresses)| !addresses.is_empty())
                 .collect();
 
             Ok(results)
@@ -584,25 +581,25 @@ impl Device {
                         addr = current_addr;
                     }
 
-                    Ok(vec![(MemoryRegion::Custom, local_addresses)])
+                    Ok(local_addresses)
                 },
                 Err(e) => Err(e),
             }
         }
     }
 
-    fn search_value_double(&self, pid: i32, value: f64, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<(MemoryRegion, Vec<u64>)>> {
+    fn search_value_double(&self, pid: i32, value: f64, regions: Vec<MemoryRegion>, name: String) -> Result<Vec<u64>> {
         if name == "" {
             let maps = self.get_mem_map(pid, false)?
                 .into_iter()
                 .filter(|map| regions.iter().any(|region| region.matches(map)))
                 .collect::<Vec<_>>();
 
-            let results: Vec<(MemoryRegion, Vec<u64>)> = regions.par_iter()
+            let results: Vec<u64> = regions.par_iter()
                 .flat_map(|&region| {
                     maps.par_iter()
                         .filter(|map| region.matches(map) && map.read_permission)
-                        .map(|map| {
+                        .flat_map(|map| {
                             let mut local_addresses = Vec::new();
                             let mut addr = map.start;
 
@@ -624,11 +621,10 @@ impl Device {
                                 addr = current_addr;
                             }
 
-                            (region, local_addresses)
+                            local_addresses.into_iter()
                         })
                         .collect::<Vec<_>>()
                 })
-                .filter(|(_, addresses)| !addresses.is_empty())
                 .collect();
 
             Ok(results)
@@ -662,7 +658,7 @@ impl Device {
                         addr = current_addr;
                     }
 
-                    Ok(vec![(MemoryRegion::Custom, local_addresses)])
+                    Ok(local_addresses)
                 },
                 Err(e) => Err(e),
             }
@@ -675,51 +671,49 @@ impl Device {
         let mut result = Vec::new();
         let mut buf = vec![0u8; 4];
 
-        for (_region, addrs) in initial_value_addrs.clone() {
-            for addr in addrs {
-                let mut res = Vec::new();
+        for (addr) in initial_value_addrs.clone() {
+            let mut res = Vec::new();
 
-                for offset in (1..=700).rev() {
-                    let current_addr = addr.wrapping_sub(offset * 4);
-                    match self.read_mem(pid, current_addr, &mut buf) {
-                        Ok(_) => {
-                            let value = Device::extract_i32(&buf);
-                            if parsed_values.contains(&value) {
-                                res.push((current_addr, value));
-                            }
-                        }
-                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
-                    }
-                }
-
-                match self.read_mem(pid, addr, &mut buf) {
+            for offset in (1..=700).rev() {
+                let current_addr = addr.wrapping_sub(offset * 4);
+                match self.read_mem(pid, current_addr, &mut buf) {
                     Ok(_) => {
                         let value = Device::extract_i32(&buf);
                         if parsed_values.contains(&value) {
-                            res.push((addr, value));
+                            res.push((current_addr, value));
                         }
                     }
-                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
                 }
+            }
 
-                for offset in 1..=700 {
-                    let current_addr = addr.wrapping_add(offset * 4);
-                    match self.read_mem(pid, current_addr, &mut buf) {
-                        Ok(_) => {
-                            let value = Device::extract_i32(&buf);
-                            if parsed_values.contains(&value) {
-                                res.push((current_addr, value));
-                            }
-                        }
-                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+            match self.read_mem(pid, addr, &mut buf) {
+                Ok(_) => {
+                    let value = Device::extract_i32(&buf);
+                    if parsed_values.contains(&value) {
+                        res.push((addr, value));
                     }
                 }
+                Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+            }
 
-                let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
-
-                if all_values_found {
-                    result.push(res);
+            for offset in 1..=700 {
+                let current_addr = addr.wrapping_add(offset * 4);
+                match self.read_mem(pid, current_addr, &mut buf) {
+                    Ok(_) => {
+                        let value = Device::extract_i32(&buf);
+                        if parsed_values.contains(&value) {
+                            res.push((current_addr, value));
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
                 }
+            }
+
+            let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
+
+            if all_values_found {
+                result.push(res);
             }
         }
 
@@ -732,54 +726,51 @@ impl Device {
         let mut result = Vec::new();
         let mut buf = vec![0u8; 8];
 
-        for (_region, addrs) in initial_value_addrs.clone() {
-            for addr in addrs {
-                let mut res = Vec::new();
+        for (addr) in initial_value_addrs.clone() {
+            let mut res = Vec::new();
 
-                for offset in (1..=700).rev() {
-                    let current_addr = addr.wrapping_sub(offset * 8);
-                    match self.read_mem(pid, current_addr, &mut buf) {
-                        Ok(_) => {
-                            let value = Device::extract_i64(&buf);
-                            if parsed_values.contains(&value) {
-                                res.push((current_addr, value));
-                            }
-                        }
-                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
-                    }
-                }
-
-                match self.read_mem(pid, addr, &mut buf) {
+            for offset in (1..=700).rev() {
+                let current_addr = addr.wrapping_sub(offset * 8);
+                match self.read_mem(pid, current_addr, &mut buf) {
                     Ok(_) => {
                         let value = Device::extract_i64(&buf);
                         if parsed_values.contains(&value) {
-                            res.push((addr, value));
+                            res.push((current_addr, value));
                         }
                     }
-                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
-                }
-
-                for offset in 1..=700 {
-                    let current_addr = addr.wrapping_add(offset * 8);
-                    match self.read_mem(pid, current_addr, &mut buf) {
-                        Ok(_) => {
-                            let value = Device::extract_i64(&buf);
-                            if parsed_values.contains(&value) {
-                                res.push((current_addr, value));
-                            }
-                        }
-                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
-                    }
-                }
-
-                let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
-
-                if all_values_found {
-                    result.push(res);
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
                 }
             }
-        }
 
+            match self.read_mem(pid, addr, &mut buf) {
+                Ok(_) => {
+                    let value = Device::extract_i64(&buf);
+                    if parsed_values.contains(&value) {
+                        res.push((addr, value));
+                    }
+                }
+                Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+            }
+
+            for offset in 1..=700 {
+                let current_addr = addr.wrapping_add(offset * 8);
+                match self.read_mem(pid, current_addr, &mut buf) {
+                    Ok(_) => {
+                        let value = Device::extract_i64(&buf);
+                        if parsed_values.contains(&value) {
+                            res.push((current_addr, value));
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                }
+            }
+
+            let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
+
+            if all_values_found {
+                result.push(res);
+            }
+        }
         result
     }
 
@@ -789,54 +780,51 @@ impl Device {
         let mut result = Vec::new();
         let mut buf = vec![0u8; 4];
 
-        for (_region, addrs) in initial_value_addrs.clone() {
-            for addr in addrs {
-                let mut res = Vec::new();
+        for (addr) in initial_value_addrs.clone() {
+            let mut res = Vec::new();
 
-                for offset in (1..=700).rev() {
-                    let current_addr = addr.wrapping_sub(offset * 4);
-                    match self.read_mem(pid, current_addr, &mut buf) {
-                        Ok(_) => {
-                            let value = Device::extract_f32(&buf);
-                            if parsed_values.contains(&value) {
-                                res.push((current_addr, value));
-                            }
-                        }
-                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
-                    }
-                }
-
-                match self.read_mem(pid, addr, &mut buf) {
+            for offset in (1..=700).rev() {
+                let current_addr = addr.wrapping_sub(offset * 4);
+                match self.read_mem(pid, current_addr, &mut buf) {
                     Ok(_) => {
                         let value = Device::extract_f32(&buf);
                         if parsed_values.contains(&value) {
-                            res.push((addr, value));
+                            res.push((current_addr, value));
                         }
                     }
-                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
-                }
-
-                for offset in 1..=700 {
-                    let current_addr = addr.wrapping_add(offset * 4);
-                    match self.read_mem(pid, current_addr, &mut buf) {
-                        Ok(_) => {
-                            let value = Device::extract_f32(&buf);
-                            if parsed_values.contains(&value) {
-                                res.push((current_addr, value));
-                            }
-                        }
-                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
-                    }
-                }
-
-                let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
-
-                if all_values_found {
-                    result.push(res);
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
                 }
             }
-        }
 
+            match self.read_mem(pid, addr, &mut buf) {
+                Ok(_) => {
+                    let value = Device::extract_f32(&buf);
+                    if parsed_values.contains(&value) {
+                        res.push((addr, value));
+                    }
+                }
+                Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+            }
+
+            for offset in 1..=700 {
+                let current_addr = addr.wrapping_add(offset * 4);
+                match self.read_mem(pid, current_addr, &mut buf) {
+                    Ok(_) => {
+                        let value = Device::extract_f32(&buf);
+                        if parsed_values.contains(&value) {
+                            res.push((current_addr, value));
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                }
+            }
+
+            let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
+
+            if all_values_found {
+                result.push(res);
+            }
+        }
         result
     }
 
@@ -846,54 +834,51 @@ impl Device {
         let mut result = Vec::new();
         let mut buf = vec![0u8; 8];
 
-        for (_region, addrs) in initial_value_addrs.clone() {
-            for addr in addrs {
-                let mut res = Vec::new();
+        for (addr) in initial_value_addrs.clone() {
+            let mut res = Vec::new();
 
-                for offset in (1..=700).rev() {
-                    let current_addr = addr.wrapping_sub(offset * 8);
-                    match self.read_mem(pid, current_addr, &mut buf) {
-                        Ok(_) => {
-                            let value = Device::extract_f64(&buf);
-                            if parsed_values.contains(&value) {
-                                res.push((current_addr, value));
-                            }
-                        }
-                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
-                    }
-                }
-
-                match self.read_mem(pid, addr, &mut buf) {
+            for offset in (1..=700).rev() {
+                let current_addr = addr.wrapping_sub(offset * 8);
+                match self.read_mem(pid, current_addr, &mut buf) {
                     Ok(_) => {
                         let value = Device::extract_f64(&buf);
                         if parsed_values.contains(&value) {
-                            res.push((addr, value));
+                            res.push((current_addr, value));
                         }
                     }
-                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
-                }
-
-                for offset in 1..=700 {
-                    let current_addr = addr.wrapping_add(offset * 8);
-                    match self.read_mem(pid, current_addr, &mut buf) {
-                        Ok(_) => {
-                            let value = Device::extract_f64(&buf);
-                            if parsed_values.contains(&value) {
-                                res.push((current_addr, value));
-                            }
-                        }
-                        Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
-                    }
-                }
-
-                let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
-
-                if all_values_found {
-                    result.push(res);
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
                 }
             }
-        }
 
+            match self.read_mem(pid, addr, &mut buf) {
+                Ok(_) => {
+                    let value = Device::extract_f64(&buf);
+                    if parsed_values.contains(&value) {
+                        res.push((addr, value));
+                    }
+                }
+                Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", addr, e),
+            }
+
+            for offset in 1..=700 {
+                let current_addr = addr.wrapping_add(offset * 8);
+                match self.read_mem(pid, current_addr, &mut buf) {
+                    Ok(_) => {
+                        let value = Device::extract_f64(&buf);
+                        if parsed_values.contains(&value) {
+                            res.push((current_addr, value));
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to read memory at {:#x}: {:?}", current_addr, e),
+                }
+            }
+
+            let all_values_found = parsed_values.iter().all(|&parsed_value| res.iter().any(|&(_, v)| v == parsed_value));
+
+            if all_values_found {
+                result.push(res);
+            }
+        }
         result
     }
 
@@ -1878,18 +1863,8 @@ fn main() {
                     return;
                 }
             };
-            for (region, addresses) in results {
-                if let Err(e) = writeln!(file, "{:?} :", region) {
-                    eprintln!("Failed to write to file: {:?}", e);
-                    return;
-                }
-                for address in addresses {
-                    if let Err(e) = writeln!(file, "{:#x}", address) {
-                        eprintln!("Failed to write to file: {:?}", e);
-                        return;
-                    }
-                }
-                if let Err(e) = writeln!(file, "===END_OF_REGION===") {
+            for (address) in results {
+                if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
                 }
@@ -1921,18 +1896,8 @@ fn main() {
                     return;
                 }
             };
-            for (region, addresses) in results {
-                if let Err(e) = writeln!(file, "{:?} :", region) {
-                    eprintln!("Failed to write to file: {:?}", e);
-                    return;
-                }
-                for address in addresses {
-                    if let Err(e) = writeln!(file, "{:#x}", address) {
-                        eprintln!("Failed to write to file: {:?}", e);
-                        return;
-                    }
-                }
-                if let Err(e) = writeln!(file, "===END_OF_REGION===") {
+            for (address) in results {
+                if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
                 }
@@ -1964,18 +1929,8 @@ fn main() {
                     return;
                 }
             };
-            for (region, addresses) in results {
-                if let Err(e) = writeln!(file, "{:?} :", region) {
-                    eprintln!("Failed to write to file: {:?}", e);
-                    return;
-                }
-                for address in addresses {
-                    if let Err(e) = writeln!(file, "{:#x}", address) {
-                        eprintln!("Failed to write to file: {:?}", e);
-                        return;
-                    }
-                }
-                if let Err(e) = writeln!(file, "===END_OF_REGION===") {
+            for (address) in results {
+                if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
                 }
@@ -2007,18 +1962,8 @@ fn main() {
                     return;
                 }
             };
-            for (region, addresses) in results {
-                if let Err(e) = writeln!(file, "{:?} :", region) {
-                    eprintln!("Failed to write to file: {:?}", e);
-                    return;
-                }
-                for address in addresses {
-                    if let Err(e) = writeln!(file, "{:#x}", address) {
-                        eprintln!("Failed to write to file: {:?}", e);
-                        return;
-                    }
-                }
-                if let Err(e) = writeln!(file, "===END_OF_REGION===") {
+            for (address) in results {
+                if let Err(e) = writeln!(file, "{:#x} {}", address, value) {
                     eprintln!("Failed to write to file: {:?}", e);
                     return;
                 }
@@ -2042,28 +1987,17 @@ fn main() {
                 }
             };
             let mut addresses = Vec::new();
-            let mut skip_next_line = false;
-            let mut skip_first_line = true;
-
             let reader = BufReader::new(file);
 
             for line in reader.lines() {
-                let line = line.unwrap();
-
-                if skip_first_line {
-                    skip_first_line = false;
-                    continue;
-                }
-
-                if skip_next_line {
-                    skip_next_line = false;
-                    continue;
-                }
-
-                if line.starts_with("===") {
-                    skip_next_line = true;
-                } else {
-                    addresses.push(line);
+                match line {
+                    Ok(line) => {
+                        let mut tmp = line.split_whitespace();
+                        if let Some(address_str) = tmp.next() {
+                            addresses.push(address_str.to_string());
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading line: {:?}", e),
                 }
             }
 
@@ -2103,28 +2037,17 @@ fn main() {
                 }
             };
             let mut addresses = Vec::new();
-            let mut skip_next_line = false;
-            let mut skip_first_line = true;
-
             let reader = BufReader::new(file);
 
             for line in reader.lines() {
-                let line = line.unwrap();
-
-                if skip_first_line {
-                    skip_first_line = false;
-                    continue;
-                }
-
-                if skip_next_line {
-                    skip_next_line = false;
-                    continue;
-                }
-
-                if line.starts_with("===") {
-                    skip_next_line = true;
-                } else {
-                    addresses.push(line);
+                match line {
+                    Ok(line) => {
+                        let mut tmp = line.split_whitespace();
+                        if let Some(address_str) = tmp.next() {
+                            addresses.push(address_str.to_string());
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading line: {:?}", e),
                 }
             }
 
@@ -2164,28 +2087,17 @@ fn main() {
                 }
             };
             let mut addresses = Vec::new();
-            let mut skip_next_line = false;
-            let mut skip_first_line = true;
-
             let reader = BufReader::new(file);
 
             for line in reader.lines() {
-                let line = line.unwrap();
-
-                if skip_first_line {
-                    skip_first_line = false;
-                    continue;
-                }
-
-                if skip_next_line {
-                    skip_next_line = false;
-                    continue;
-                }
-
-                if line.starts_with("===") {
-                    skip_next_line = true;
-                } else {
-                    addresses.push(line);
+                match line {
+                    Ok(line) => {
+                        let mut tmp = line.split_whitespace();
+                        if let Some(address_str) = tmp.next() {
+                            addresses.push(address_str.to_string());
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading line: {:?}", e),
                 }
             }
 
@@ -2224,28 +2136,17 @@ fn main() {
                 }
             };
             let mut addresses = Vec::new();
-            let mut skip_next_line = false;
-            let mut skip_first_line = true;
-
             let reader = BufReader::new(file);
 
             for line in reader.lines() {
-                let line = line.unwrap();
-
-                if skip_first_line {
-                    skip_first_line = false;
-                    continue;
-                }
-
-                if skip_next_line {
-                    skip_next_line = false;
-                    continue;
-                }
-
-                if line.starts_with("===") {
-                    skip_next_line = true;
-                } else {
-                    addresses.push(line);
+                match line {
+                    Ok(line) => {
+                        let mut tmp = line.split_whitespace();
+                        if let Some(address_str) = tmp.next() {
+                            addresses.push(address_str.to_string());
+                        }
+                    }
+                    Err(e) => eprintln!("Error reading line: {:?}", e),
                 }
             }
 
