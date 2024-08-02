@@ -60,9 +60,9 @@ struct SearchParamsInt {
     pid_t pid;
     bool is_force_read;
     int value_to_compare;
-    u64 addresses[200];
+    u64 addresses[70];
     size_t num_addresses;
-    u64 matching_addresses[200];
+    u64 matching_addresses[70];
     size_t num_matching_addresses;
 };
 
@@ -70,9 +70,9 @@ struct SearchParamsFloat {
     pid_t pid;
     bool is_force_read;
     float value_to_compare;
-    u64 addresses[200];
+    u64 addresses[70];
     size_t num_addresses;
-    u64 matching_addresses[200];
+    u64 matching_addresses[70];
     size_t num_matching_addresses;
 };
 
@@ -80,9 +80,9 @@ struct SearchParamsLong {
     pid_t pid;
     bool is_force_read;
     long value_to_compare;
-    u64 addresses[200];
+    u64 addresses[70];
     size_t num_addresses;
-    u64 matching_addresses[200];
+    u64 matching_addresses[70];
     size_t num_matching_addresses;
 };
 
@@ -90,9 +90,9 @@ struct SearchParamsDouble {
     pid_t pid;
     bool is_force_read;
     double value_to_compare;
-    u64 addresses[200];
+    u64 addresses[70];
     size_t num_addresses;
-    u64 matching_addresses[200];
+    u64 matching_addresses[70];
     size_t num_matching_addresses;
 };
 
@@ -102,6 +102,47 @@ struct ModuleRange {
     u64 address_base;
     u64 address_end;
 };
+
+int __nesf2(float a, float b) {
+    if (a < b)
+        return -1;
+    else if (a > b)
+        return 1;
+    else
+        return 0;
+}
+
+int __nedf2(double a, double b) {
+    if (a < b)
+        return -1;
+    else if (a > b)
+        return 1;
+    else
+        return 0;
+}
+
+int __gtsf2(float a, float b) {
+    return a > b;
+}
+
+int __ltsf2(float a, float b) {
+    return a < b;
+}
+
+int __gtdf2(double a, double b) {
+    return a > b;
+}
+
+int __ltdf2(double a, double b) {
+    return a < b;
+}
+
+EXPORT_SYMBOL(__nesf2);
+EXPORT_SYMBOL(__nedf2);
+EXPORT_SYMBOL(__gtsf2);
+EXPORT_SYMBOL(__ltsf2);
+EXPORT_SYMBOL(__gtdf2);
+EXPORT_SYMBOL(__ltdf2);
 
 int rwProcMem_open(struct inode *inode, struct file *filp);
 int rwProcMem_release(struct inode *inode, struct file *filp);

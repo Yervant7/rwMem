@@ -139,39 +139,45 @@ ssize_t rwProcMem_write(struct file *filp, const char __user *buf, size_t size, 
 }
 
 ssize_t rwProcMem_search_int(struct SearchParamsInt *params) {
-
     pid_t pid = params->pid;
     bool is_force_read = params->is_force_read;
     size_t value_size = 4;
+    size_t read_size = 0;
+    size_t i = 0;
+    size_t num_addresses = params->num_addresses;
 
     struct pid *pid_struct = find_get_pid(pid);
     if (!pid_struct) {
         return -EINVAL;
     }
 
-    size_t num_addresses = params->num_addresses;
-    if (num_addresses > 200) {
-        num_addresses = 200;
+    if (num_addresses > 70) {
+        num_addresses = 70;
     }
 
-    size_t read_size = 0;
     params->num_matching_addresses = 0;
-    size_t i = 0;
-    for (i; i < num_addresses; ++i) {
+
+    for (i = 0; i < num_addresses; ++i) {
         uint64_t proc_virt_addr = params->addresses[i];
         char buf[4] = {0};
         pte_t *pte;
+        size_t phy_addr = 0;
+        bool old_pte_can_read;
+        size_t pfn_sz = 0;
+        size_t actual_read = 0;
+        int read_value = 0;
+        int value_to_compare = params->value_to_compare;
 
         if (!is_force_read && !check_proc_map_can_read(pid_struct, proc_virt_addr, value_size)) {
             continue;
         }
 
-        size_t phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
+        phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
         if (phy_addr == 0) {
             continue;
         }
 
-        bool old_pte_can_read = is_pte_can_read(pte);
+        old_pte_can_read = is_pte_can_read(pte);
         if (is_force_read) {
             if (!old_pte_can_read && !change_pte_read_status(pte, true)) {
                 continue;
@@ -180,8 +186,8 @@ ssize_t rwProcMem_search_int(struct SearchParamsInt *params) {
             continue;
         }
 
-        size_t pfn_sz = size_inside_page(phy_addr, value_size);
-        size_t actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
+        pfn_sz = size_inside_page(phy_addr, value_size);
+        actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
         if (actual_read != pfn_sz) {
             if (is_force_read && !old_pte_can_read) {
                 change_pte_read_status(pte, false);
@@ -193,8 +199,7 @@ ssize_t rwProcMem_search_int(struct SearchParamsInt *params) {
             change_pte_read_status(pte, false);
         }
 
-        int read_value = *(int*)buf;
-        int value_to_compare = params->value_to_compare;
+        read_value = *(int*)buf;
 
         if (read_value == value_to_compare) {
             params->matching_addresses[params->num_matching_addresses++] = proc_virt_addr;
@@ -213,39 +218,45 @@ ssize_t rwProcMem_search_int(struct SearchParamsInt *params) {
 }
 
 ssize_t rwProcMem_search_float(struct SearchParamsFloat *params) {
-
     pid_t pid = params->pid;
     bool is_force_read = params->is_force_read;
     size_t value_size = 4;
+    size_t read_size = 0;
+    size_t i = 0;
+    size_t num_addresses = params->num_addresses;
 
     struct pid *pid_struct = find_get_pid(pid);
     if (!pid_struct) {
         return -EINVAL;
     }
 
-    size_t num_addresses = params->num_addresses;
-    if (num_addresses > 200) {
-        num_addresses = 200;
+    if (num_addresses > 70) {
+        num_addresses = 70;
     }
 
-    size_t read_size = 0;
     params->num_matching_addresses = 0;
-    size_t i = 0;
-    for (i; i < num_addresses; ++i) {
+
+    for (i = 0; i < num_addresses; ++i) {
         uint64_t proc_virt_addr = params->addresses[i];
         char buf[4] = {0};
         pte_t *pte;
+        size_t phy_addr = 0;
+        bool old_pte_can_read;
+        size_t pfn_sz = 0;
+        size_t actual_read = 0;
+        float read_value = 0.0f;
+        float value_to_compare = params->value_to_compare;
 
         if (!is_force_read && !check_proc_map_can_read(pid_struct, proc_virt_addr, value_size)) {
             continue;
         }
 
-        size_t phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
+        phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
         if (phy_addr == 0) {
             continue;
         }
 
-        bool old_pte_can_read = is_pte_can_read(pte);
+        old_pte_can_read = is_pte_can_read(pte);
         if (is_force_read) {
             if (!old_pte_can_read && !change_pte_read_status(pte, true)) {
                 continue;
@@ -254,8 +265,8 @@ ssize_t rwProcMem_search_float(struct SearchParamsFloat *params) {
             continue;
         }
 
-        size_t pfn_sz = size_inside_page(phy_addr, value_size);
-        size_t actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
+        pfn_sz = size_inside_page(phy_addr, value_size);
+        actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
         if (actual_read != pfn_sz) {
             if (is_force_read && !old_pte_can_read) {
                 change_pte_read_status(pte, false);
@@ -267,8 +278,7 @@ ssize_t rwProcMem_search_float(struct SearchParamsFloat *params) {
             change_pte_read_status(pte, false);
         }
 
-        float read_value = *(float*)buf;
-        float value_to_compare = params->value_to_compare;
+        read_value = *(float*)buf;
 
         if (read_value == value_to_compare) {
             params->matching_addresses[params->num_matching_addresses++] = proc_virt_addr;
@@ -287,39 +297,45 @@ ssize_t rwProcMem_search_float(struct SearchParamsFloat *params) {
 }
 
 ssize_t rwProcMem_search_long(struct SearchParamsLong *params) {
-
     pid_t pid = params->pid;
     bool is_force_read = params->is_force_read;
     size_t value_size = 8;
+    size_t read_size = 0;
+    size_t i = 0;
+    size_t num_addresses = params->num_addresses;
 
     struct pid *pid_struct = find_get_pid(pid);
     if (!pid_struct) {
         return -EINVAL;
     }
 
-    size_t num_addresses = params->num_addresses;
-    if (num_addresses > 200) {
-        num_addresses = 200;
+    if (num_addresses > 70) {
+        num_addresses = 70;
     }
 
-    size_t read_size = 0;
     params->num_matching_addresses = 0;
-    size_t i = 0;
-    for (i; i < num_addresses; ++i) {
+
+    for (i = 0; i < num_addresses; ++i) {
         uint64_t proc_virt_addr = params->addresses[i];
         char buf[8] = {0};
         pte_t *pte;
+        size_t phy_addr = 0;
+        bool old_pte_can_read;
+        size_t pfn_sz = 0;
+        size_t actual_read = 0;
+        long read_value = 0;
+        long value_to_compare = params->value_to_compare;
 
         if (!is_force_read && !check_proc_map_can_read(pid_struct, proc_virt_addr, value_size)) {
             continue;
         }
 
-        size_t phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
+        phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
         if (phy_addr == 0) {
             continue;
         }
 
-        bool old_pte_can_read = is_pte_can_read(pte);
+        old_pte_can_read = is_pte_can_read(pte);
         if (is_force_read) {
             if (!old_pte_can_read && !change_pte_read_status(pte, true)) {
                 continue;
@@ -328,8 +344,8 @@ ssize_t rwProcMem_search_long(struct SearchParamsLong *params) {
             continue;
         }
 
-        size_t pfn_sz = size_inside_page(phy_addr, value_size);
-        size_t actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
+        pfn_sz = size_inside_page(phy_addr, value_size);
+        actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
         if (actual_read != pfn_sz) {
             if (is_force_read && !old_pte_can_read) {
                 change_pte_read_status(pte, false);
@@ -341,8 +357,7 @@ ssize_t rwProcMem_search_long(struct SearchParamsLong *params) {
             change_pte_read_status(pte, false);
         }
 
-        long read_value = *(long*)buf;
-        long value_to_compare = params->value_to_compare;
+        read_value = *(long*)buf;
 
         if (read_value == value_to_compare) {
             params->matching_addresses[params->num_matching_addresses++] = proc_virt_addr;
@@ -361,39 +376,45 @@ ssize_t rwProcMem_search_long(struct SearchParamsLong *params) {
 }
 
 ssize_t rwProcMem_search_double(struct SearchParamsDouble *params) {
-
     pid_t pid = params->pid;
     bool is_force_read = params->is_force_read;
     size_t value_size = 8;
+    size_t read_size = 0;
+    size_t i = 0;
+    size_t num_addresses = params->num_addresses;
 
     struct pid *pid_struct = find_get_pid(pid);
     if (!pid_struct) {
         return -EINVAL;
     }
 
-    size_t num_addresses = params->num_addresses;
-    if (num_addresses > 200) {
-        num_addresses = 200;
+    if (num_addresses > 70) {
+        num_addresses = 70;
     }
 
-    size_t read_size = 0;
     params->num_matching_addresses = 0;
-    size_t i = 0;
-    for (i; i < num_addresses; ++i) {
+
+    for (i = 0; i < num_addresses; ++i) {
         uint64_t proc_virt_addr = params->addresses[i];
         char buf[8] = {0};
         pte_t *pte;
+        size_t phy_addr = 0;
+        bool old_pte_can_read;
+        size_t pfn_sz = 0;
+        size_t actual_read = 0;
+        double read_value = 0.0;
+        double value_to_compare = params->value_to_compare;
 
         if (!is_force_read && !check_proc_map_can_read(pid_struct, proc_virt_addr, value_size)) {
             continue;
         }
 
-        size_t phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
+        phy_addr = get_proc_phy_addr(pid_struct, proc_virt_addr, (pte_t *)&pte);
         if (phy_addr == 0) {
             continue;
         }
 
-        bool old_pte_can_read = is_pte_can_read(pte);
+        old_pte_can_read = is_pte_can_read(pte);
         if (is_force_read) {
             if (!old_pte_can_read && !change_pte_read_status(pte, true)) {
                 continue;
@@ -402,8 +423,8 @@ ssize_t rwProcMem_search_double(struct SearchParamsDouble *params) {
             continue;
         }
 
-        size_t pfn_sz = size_inside_page(phy_addr, value_size);
-        size_t actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
+        pfn_sz = size_inside_page(phy_addr, value_size);
+        actual_read = read_ram_physical_addr(phy_addr, buf, true, pfn_sz);
         if (actual_read != pfn_sz) {
             if (is_force_read && !old_pte_can_read) {
                 change_pte_read_status(pte, false);
@@ -415,8 +436,7 @@ ssize_t rwProcMem_search_double(struct SearchParamsDouble *params) {
             change_pte_read_status(pte, false);
         }
 
-        double read_value = *(double*)buf;
-        double value_to_compare = params->value_to_compare;
+        read_value = *(double*)buf;
 
         if (read_value == value_to_compare) {
             params->matching_addresses[params->num_matching_addresses++] = proc_virt_addr;
@@ -434,65 +454,50 @@ ssize_t rwProcMem_search_double(struct SearchParamsDouble *params) {
     return 0;
 }
 
-// extracted from the internet from some kernel module, I don't know the author
-uint64_t get_module_base(pid_t pid, const char* name)
-{
-	struct task_struct* task;
-	struct mm_struct* mm;
-	struct vm_area_struct *vma;
-	size_t count = 0;
-
-	task = pid_task(find_vpid(pid), PIDTYPE_PID);
-	if (!task)
-		return 0;
-
-	mm = get_task_mm(task);
-	if (!mm)
-		return 0;
-
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		char buf[M_PATH_MAX];
-		char *path_nm = "";
-		if (vma->vm_file) {
-			path_nm = file_path(vma->vm_file, buf, M_PATH_MAX-1);
-			if (!strcmp(kbasename(path_nm), name)) {
-				count = vma->vm_start;
-				break;
-			}
-		}
-	}
-	mmput(mm);
-	return count;
-}
-
-uint64_t get_module_end(pid_t pid, const char* name)
-{
+// based on code extracted from the internet from some kernel module, I don't know the author
+uint64_t get_module_info(pid_t pid, const char* name, bool get_base) {
     struct task_struct* task;
     struct mm_struct* mm;
     struct vm_area_struct *vma;
-    size_t end_address = 0;
+    uint64_t addr = 0;
 
     task = pid_task(find_vpid(pid), PIDTYPE_PID);
     if (!task)
         return 0;
 
     mm = get_task_mm(task);
-    if (!mm)
+    if (!mm) {
         return 0;
-
-    for (vma = mm->mmap; vma; vma = vma->vm_next) {
-        char buf[M_PATH_MAX];
-        char *path_nm = "";
-        if (vma->vm_file) {
-            path_nm = file_path(vma->vm_file, buf, M_PATH_MAX-1);
-            if (!strcmp(kbasename(path_nm), name)) {
-                end_address = vma->vm_end;
-                break;
+    } else {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+        VMA_ITERATOR(iter, mm, 0);
+        for_each_vma(iter, vma) {
+#else
+        for (vma = mm->mmap; vma; vma = vma->vm_next) {
+#endif
+            char buf[M_PATH_MAX];
+            char *path_nm = "";
+            if (vma->vm_file) {
+                path_nm = file_path(vma->vm_file, buf, M_PATH_MAX);
+                if (!IS_ERR(path_nm)) {
+                    if (!strcmp(kbasename(path_nm), name)) {
+                        addr = get_base ? vma->vm_start : vma->vm_end;
+                        break;
+                    }
+                }
             }
         }
+        mmput(mm);
+        return addr;
     }
-    mmput(mm);
-    return end_address;
+}
+
+uint64_t get_module_base(pid_t pid, const char* name) {
+    return get_module_info(pid, name, true);
+}
+
+uint64_t get_module_end(pid_t pid, const char* name) {
+    return get_module_info(pid, name, false);
 }
 
 static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
@@ -609,13 +614,14 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
     }
     case IOCTL_MEM_SEARCH_INT: {
         struct SearchParamsInt params;
+        ssize_t result = -1;
         if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
             return -EINVAL;
         }
 
         mutex_lock(&rwProcMem_mutex);
 
-        ssize_t result = rwProcMem_search_int(&params);
+        result = rwProcMem_search_int(&params);
 
         mutex_unlock(&rwProcMem_mutex);
 
@@ -631,13 +637,14 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
     }
     case IOCTL_MEM_SEARCH_FLOAT: {
         struct SearchParamsFloat params;
+        ssize_t result = -1;
         if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
             return -EINVAL;
         }
 
         mutex_lock(&rwProcMem_mutex);
 
-        ssize_t result = rwProcMem_search_float(&params);
+        result = rwProcMem_search_float(&params);
 
         mutex_unlock(&rwProcMem_mutex);
 
@@ -653,13 +660,14 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
     }
     case IOCTL_MEM_SEARCH_LONG: {
         struct SearchParamsLong params;
+        ssize_t result = -1;
         if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
             return -EINVAL;
         }
 
         mutex_lock(&rwProcMem_mutex);
 
-        ssize_t result = rwProcMem_search_long(&params);
+        result = rwProcMem_search_long(&params);
 
         mutex_unlock(&rwProcMem_mutex);
 
@@ -675,13 +683,14 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
     }
     case IOCTL_MEM_SEARCH_DOUBLE: {
         struct SearchParamsDouble params;
+        ssize_t result = -1;
         if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
             return -EINVAL;
         }
 
         mutex_lock(&rwProcMem_mutex);
 
-        ssize_t result = rwProcMem_search_double(&params);
+        result = rwProcMem_search_double(&params);
 
         mutex_unlock(&rwProcMem_mutex);
 
@@ -697,12 +706,14 @@ static inline long DispatchCommand(unsigned int cmd, unsigned long arg) {
     }
     case IOCTL_GET_MODULE_RANGE: {
         struct ModuleRange params;
+        uint64_t address_base = 0;
+        uint64_t address_end = 0;
         if (x_copy_from_user((void *)&params, (void *)arg, sizeof(params))) {
             return -EINVAL;
         }
 
-        uint64_t address_base = get_module_base(params.pid, params.name);
-        uint64_t address_end = get_module_end(params.pid, params.name);
+        address_base = get_module_base(params.pid, params.name);
+        address_end = get_module_end(params.pid, params.name);
 
         params.address_base = address_base;
         params.address_end = address_end;

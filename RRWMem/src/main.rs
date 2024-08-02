@@ -38,9 +38,9 @@ struct SearchParamsInt {
     pid: libc::pid_t,
     is_force_read: bool,
     value_to_compare: libc::c_int,
-    addresses: [u64; 200],
+    addresses: [u64; 70],
     num_addresses: libc::size_t,
-    matching_addresses: [u64; 200],
+    matching_addresses: [u64; 70],
     num_matching_addresses: libc::size_t,
 }
 
@@ -50,9 +50,9 @@ struct SearchParamsFloat {
     pid: libc::pid_t,
     is_force_read: bool,
     value_to_compare: libc::c_float,
-    addresses: [u64; 200],
+    addresses: [u64; 70],
     num_addresses: libc::size_t,
-    matching_addresses: [u64; 200],
+    matching_addresses: [u64; 70],
     num_matching_addresses: libc::size_t,
 }
 
@@ -62,9 +62,9 @@ struct SearchParamsLong {
     pid: libc::pid_t,
     is_force_read: bool,
     value_to_compare: libc::c_long,
-    addresses: [u64; 200],
+    addresses: [u64; 70],
     num_addresses: libc::size_t,
-    matching_addresses: [u64; 200],
+    matching_addresses: [u64; 70],
     num_matching_addresses: libc::size_t,
 }
 
@@ -74,9 +74,9 @@ struct SearchParamsDouble {
     pid: libc::pid_t,
     is_force_read: bool,
     value_to_compare: libc::c_double,
-    addresses: [u64; 200],
+    addresses: [u64; 70],
     num_addresses: libc::size_t,
-    matching_addresses: [u64; 200],
+    matching_addresses: [u64; 70],
     num_matching_addresses: libc::size_t,
 }
 
@@ -219,9 +219,9 @@ impl Device {
             pid,
             is_force_read: true,
             value_to_compare: 0,
-            addresses: [0; 200],
+            addresses: [0; 70],
             num_addresses,
-            matching_addresses: [0; 200],
+            matching_addresses: [0; 70],
             num_matching_addresses: 0,
         };
 
@@ -253,10 +253,10 @@ impl Device {
         let mut params = SearchParamsFloat {
             pid,
             is_force_read: true,
-            value_to_compare: 0.0,
-            addresses: [0; 200],
+            value_to_compare: 0.0f32,
+            addresses: [0; 70],
             num_addresses,
-            matching_addresses: [0; 200],
+            matching_addresses: [0; 70],
             num_matching_addresses: 0,
         };
 
@@ -289,9 +289,9 @@ impl Device {
             pid,
             is_force_read: true,
             value_to_compare: 0,
-            addresses: [0; 200],
+            addresses: [0; 70],
             num_addresses,
-            matching_addresses: [0; 200],
+            matching_addresses: [0; 70],
             num_matching_addresses: 0,
         };
 
@@ -300,7 +300,6 @@ impl Device {
         }
 
         params.value_to_compare = value_to_compare as libc::c_long;
-
 
         let ret = unsafe {
             libc::ioctl(
@@ -324,10 +323,10 @@ impl Device {
         let mut params = SearchParamsDouble {
             pid,
             is_force_read: true,
-            value_to_compare: 0.0,
-            addresses: [0; 200],
+            value_to_compare: 0.0f64,
+            addresses: [0; 70],
             num_addresses,
-            matching_addresses: [0; 200],
+            matching_addresses: [0; 70],
             num_matching_addresses: 0,
         };
 
@@ -336,7 +335,6 @@ impl Device {
         }
 
         params.value_to_compare = value_to_compare as libc::c_double;
-
 
         let ret = unsafe {
             libc::ioctl(
@@ -374,7 +372,7 @@ impl Device {
                                 let mut addrs_to_read = Vec::new();
                                 let mut current_addr = addr;
 
-                                while current_addr + std::mem::size_of::<i32>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                while current_addr + std::mem::size_of::<i32>() as u64 <= map.end && addrs_to_read.len() < 70 {
                                     addrs_to_read.push(current_addr);
                                     current_addr += std::mem::size_of::<i32>() as u64;
                                 }
@@ -411,7 +409,7 @@ impl Device {
                         let mut addrs_to_read = Vec::new();
                         let mut current_addr = addr;
 
-                        while current_addr + std::mem::size_of::<i32>() as u64 <= end && addrs_to_read.len() < 200 {
+                        while current_addr + std::mem::size_of::<i32>() as u64 <= end && addrs_to_read.len() < 70 {
                             addrs_to_read.push(current_addr);
                             current_addr += std::mem::size_of::<i32>() as u64;
                         }
@@ -451,7 +449,7 @@ impl Device {
                                 let mut addrs_to_read = Vec::new();
                                 let mut current_addr = addr;
 
-                                while current_addr + std::mem::size_of::<f32>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                while current_addr + std::mem::size_of::<f32>() as u64 <= map.end && addrs_to_read.len() < 70 {
                                     addrs_to_read.push(current_addr);
                                     current_addr += std::mem::size_of::<f32>() as u64;
                                 }
@@ -488,7 +486,7 @@ impl Device {
                         let mut addrs_to_read = Vec::new();
                         let mut current_addr = addr;
 
-                        while current_addr + std::mem::size_of::<f32>() as u64 <= end && addrs_to_read.len() < 200 {
+                        while current_addr + std::mem::size_of::<f32>() as u64 <= end && addrs_to_read.len() < 70 {
                             addrs_to_read.push(current_addr);
                             current_addr += std::mem::size_of::<f32>() as u64;
                         }
@@ -528,7 +526,7 @@ impl Device {
                                 let mut addrs_to_read = Vec::new();
                                 let mut current_addr = addr;
 
-                                while current_addr + std::mem::size_of::<i64>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                while current_addr + std::mem::size_of::<i64>() as u64 <= map.end && addrs_to_read.len() < 70 {
                                     addrs_to_read.push(current_addr);
                                     current_addr += std::mem::size_of::<i64>() as u64;
                                 }
@@ -565,7 +563,7 @@ impl Device {
                         let mut addrs_to_read = Vec::new();
                         let mut current_addr = addr;
 
-                        while current_addr + std::mem::size_of::<i64>() as u64 <= end && addrs_to_read.len() < 200 {
+                        while current_addr + std::mem::size_of::<i64>() as u64 <= end && addrs_to_read.len() < 70 {
                             addrs_to_read.push(current_addr);
                             current_addr += std::mem::size_of::<i64>() as u64;
                         }
@@ -605,7 +603,7 @@ impl Device {
                                 let mut addrs_to_read = Vec::new();
                                 let mut current_addr = addr;
 
-                                while current_addr + std::mem::size_of::<f64>() as u64 <= map.end && addrs_to_read.len() < 200 {
+                                while current_addr + std::mem::size_of::<f64>() as u64 <= map.end && addrs_to_read.len() < 70 {
                                     addrs_to_read.push(current_addr);
                                     current_addr += std::mem::size_of::<f64>() as u64;
                                 }
@@ -642,7 +640,7 @@ impl Device {
                         let mut addrs_to_read = Vec::new();
                         let mut current_addr = addr;
 
-                        while current_addr + std::mem::size_of::<f64>() as u64 <= end && addrs_to_read.len() < 200 {
+                        while current_addr + std::mem::size_of::<f64>() as u64 <= end && addrs_to_read.len() < 70 {
                             addrs_to_read.push(current_addr);
                             current_addr += std::mem::size_of::<f64>() as u64;
                         }
@@ -1229,7 +1227,7 @@ impl Drop for Device {
 }
 
 #[derive(Parser)]
-#[command(name = "Android Memory Tool", version = "0.3.7", author = "yervant7", about = "Tool to read and write process memory on Android")]
+#[command(name = "Android Memory Tool", version = "0.4.0", author = "yervant7", about = "Tool to read and write process memory on Android")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -1298,7 +1296,7 @@ enum Commands {
     ModuleRange {
         #[arg(help = "Process ID")]
         pid: i32,
-        #[arg(help = "name of module")]
+        #[arg(help = "Name of module")]
         name: String,
     },
     Disassemble {
@@ -1670,8 +1668,8 @@ fn main() {
         Commands::SearchGroupInt { pid, values, regions, path } => {
             let start = Instant::now();
 
-            let name = if regions.contains("lib") {
-                regions.to_string()
+            let name = if regions.clone().contains("lib") || regions.clone().contains(".apk") {
+                regions.clone()
             } else {
                 "".to_string()
             };
@@ -1712,8 +1710,8 @@ fn main() {
         Commands::SearchGroupLong { pid, values, regions, path } => {
             let start = Instant::now();
 
-            let name = if regions.contains("lib") {
-                regions.to_string()
+            let name = if regions.clone().contains("lib") || regions.clone().contains(".apk") {
+                regions.clone()
             } else {
                 "".to_string()
             };
@@ -1755,8 +1753,8 @@ fn main() {
         Commands::SearchGroupFloat { pid, values, regions, path } => {
             let start = Instant::now();
 
-            let name = if regions.contains("lib") {
-                regions.to_string()
+            let name = if regions.clone().contains("lib") || regions.clone().contains(".apk") {
+                regions.clone()
             } else {
                 "".to_string()
             };
@@ -1798,8 +1796,8 @@ fn main() {
         Commands::SearchGroupDouble { pid, values, regions, path } => {
             let start = Instant::now();
 
-            let name = if regions.contains("lib") {
-                regions.to_string()
+            let name = if regions.clone().contains("lib") || regions.clone().contains(".apk") {
+                regions.clone()
             } else {
                 "".to_string()
             };
@@ -1840,7 +1838,7 @@ fn main() {
         }
         Commands::SearchInt { pid, value, regions, path } => {
             let start = Instant::now();
-            let name = if regions.clone().contains("lib") {
+            let name = if regions.clone().contains("lib") || regions.clone().contains(".apk") {
                 regions.clone()
             } else {
                 "".to_string()
@@ -1873,7 +1871,7 @@ fn main() {
         }
         Commands::SearchLong { pid, value, regions, path } => {
             let start = Instant::now();
-            let name = if regions.clone().contains("lib") {
+            let name = if regions.clone().contains("lib") || regions.clone().contains(".apk") {
                 regions.clone()
             } else {
                 "".to_string()
@@ -1906,7 +1904,7 @@ fn main() {
         }
         Commands::SearchFloat { pid, value, regions, path } => {
             let start = Instant::now();
-            let name = if regions.clone().contains("lib") {
+            let name = if regions.clone().contains("lib") || regions.clone().contains(".apk") {
                 regions.clone()
             } else {
                 "".to_string()
@@ -1939,7 +1937,7 @@ fn main() {
         }
         Commands::SearchDouble { pid, value, regions, path } => {
             let start = Instant::now();
-            let name = if regions.clone().contains("lib") {
+            let name = if regions.clone().contains("lib") || regions.clone().contains(".apk") {
                 regions.clone()
             } else {
                 "".to_string()
