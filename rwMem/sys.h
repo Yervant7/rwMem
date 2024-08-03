@@ -32,10 +32,7 @@
 #define IOCTL_GET_PROCESS_MAPS_LIST _IOWR(MAJOR_NUM, 1, char *)  // 获取进程的内存块地址列表
 #define IOCTL_CHECK_PROCESS_ADDR_PHY _IOWR(MAJOR_NUM, 2, char *) // 检查进程内存是否有物理内存位置
 #define IOCTL_MEM_SEARCH_INT _IOWR(MAJOR_NUM, 3, struct SearchParamsInt)
-#define IOCTL_MEM_SEARCH_FLOAT _IOWR(MAJOR_NUM, 4, struct SearchParamsFloat)
-#define IOCTL_MEM_SEARCH_LONG _IOWR(MAJOR_NUM, 5, struct SearchParamsLong)
-#define IOCTL_MEM_SEARCH_DOUBLE _IOWR(MAJOR_NUM, 6, struct SearchParamsDouble)
-#define IOCTL_GET_MODULE_RANGE _IOWR(MAJOR_NUM, 7, struct ModuleRange)
+#define IOCTL_MEM_SEARCH_LONG _IOWR(MAJOR_NUM, 4, struct SearchParamsLong)
 
 #define M_PATH_MAX 256
 
@@ -66,16 +63,6 @@ struct SearchParamsInt {
     size_t num_matching_addresses;
 };
 
-struct SearchParamsFloat {
-    pid_t pid;
-    bool is_force_read;
-    float value_to_compare;
-    u64 addresses[70];
-    size_t num_addresses;
-    u64 matching_addresses[70];
-    size_t num_matching_addresses;
-};
-
 struct SearchParamsLong {
     pid_t pid;
     bool is_force_read;
@@ -85,64 +72,6 @@ struct SearchParamsLong {
     u64 matching_addresses[70];
     size_t num_matching_addresses;
 };
-
-struct SearchParamsDouble {
-    pid_t pid;
-    bool is_force_read;
-    double value_to_compare;
-    u64 addresses[70];
-    size_t num_addresses;
-    u64 matching_addresses[70];
-    size_t num_matching_addresses;
-};
-
-struct ModuleRange {
-    pid_t pid;
-    char name[256];
-    u64 address_base;
-    u64 address_end;
-};
-
-int __nesf2(float a, float b) {
-    if (a < b)
-        return -1;
-    else if (a > b)
-        return 1;
-    else
-        return 0;
-}
-
-int __nedf2(double a, double b) {
-    if (a < b)
-        return -1;
-    else if (a > b)
-        return 1;
-    else
-        return 0;
-}
-
-int __gtsf2(float a, float b) {
-    return a > b;
-}
-
-int __ltsf2(float a, float b) {
-    return a < b;
-}
-
-int __gtdf2(double a, double b) {
-    return a > b;
-}
-
-int __ltdf2(double a, double b) {
-    return a < b;
-}
-
-EXPORT_SYMBOL(__nesf2);
-EXPORT_SYMBOL(__nedf2);
-EXPORT_SYMBOL(__gtsf2);
-EXPORT_SYMBOL(__ltsf2);
-EXPORT_SYMBOL(__gtdf2);
-EXPORT_SYMBOL(__ltdf2);
 
 int rwProcMem_open(struct inode *inode, struct file *filp);
 int rwProcMem_release(struct inode *inode, struct file *filp);
