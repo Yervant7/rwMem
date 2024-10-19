@@ -31,8 +31,6 @@
 #define IOCTL_GET_PROCESS_MAPS_COUNT _IOWR(MAJOR_NUM, 0, char *) // 获取进程的内存块地址数量
 #define IOCTL_GET_PROCESS_MAPS_LIST _IOWR(MAJOR_NUM, 1, char *)  // 获取进程的内存块地址列表
 #define IOCTL_CHECK_PROCESS_ADDR_PHY _IOWR(MAJOR_NUM, 2, char *) // 检查进程内存是否有物理内存位置
-#define IOCTL_MEM_SEARCH_INT _IOWR(MAJOR_NUM, 3, struct SearchParamsInt)
-#define IOCTL_MEM_SEARCH_LONG _IOWR(MAJOR_NUM, 4, struct SearchParamsLong)
 
 #define M_PATH_MAX 256
 
@@ -52,26 +50,6 @@ struct rwProcMemDev {
 static struct rwProcMemDev *g_rwProcMem_devp;
 
 static struct class *g_Class_devp;
-
-struct SearchParamsInt {
-    pid_t pid;
-    bool is_force_read;
-    int value_to_compare;
-    u64 addresses[70];
-    size_t num_addresses;
-    u64 matching_addresses[70];
-    size_t num_matching_addresses;
-};
-
-struct SearchParamsLong {
-    pid_t pid;
-    bool is_force_read;
-    long value_to_compare;
-    u64 addresses[70];
-    size_t num_addresses;
-    u64 matching_addresses[70];
-    size_t num_matching_addresses;
-};
 
 int rwProcMem_open(struct inode *inode, struct file *filp);
 int rwProcMem_release(struct inode *inode, struct file *filp);

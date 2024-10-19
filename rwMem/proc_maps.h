@@ -270,6 +270,7 @@ static int get_proc_maps_list(struct pid* proc_pid_struct, size_t max_path_lengt
 
     	return success;
     }
+	return -1;
 }
 
 #endif /* PROC_MAPS_H_ */
