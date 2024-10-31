@@ -1,6 +1,5 @@
 [workspace]
 resolver = "2"
 members = [
-    "RRWMem",
-    "keystone-bindings"
+    "librwMem",
 ]

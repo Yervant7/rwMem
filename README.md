@@ -14,6 +14,7 @@ Read and write memory in a remote process is a common task in game hacking. Ther
 2. build the kernel module with the following command
 
 ```bash
+export PATH="/path/to/clang-aosp/bin:$PATH"
 make CC=clang LLVM=1 KDIR=<android-kernel>/out/android13-5.15/common 
 ```
 
@@ -30,22 +31,22 @@ make CC=clang LLVM=1 KDIR=<android-kernel>/out/android13-5.15/common
 
 ### RRWMem
 
-1. clone this repository and my modification of keystone-bindings
-2. edit the file build.rs of keystone-bindings to add your PATH for the RWMEM repository
-3. download NDK and add to your system variables
+1. clone this repository
+2. download NDK and add to your system variables "NDK_HOME"
+3. install cargo-ndk
 4. run
 ```bash
-cargo ndk -t arm64-v8a build
+cargo ndk -t arm64-v8a build --lib --release
 ```
 
 ## How to use?
 
-Install the kernel module and then run the RWMem executable.
+Load the kernel module (rwMem) and then you can use HuntGames.
 
 ## Project Structure
 
 ```
 .
 ├── rwMem         # The kernel module
-└── RRWMem        # A rust executable to communicate with the kernel module
+└── librwMem      # A library to communicate with the kernel module
 ```
