@@ -19,6 +19,7 @@ use jni::sys::{jint, jlong, jsize};
 use std::any::TypeId;
 use std::convert::TryInto;
 use std::ops::{Add, Sub};
+use std::str::FromStr;
 use std::time::Duration;
 use bitvec::macros::internal::funty::Fundamental;
 use android_logger::Config;
@@ -589,16 +590,23 @@ impl Device {
 
                     let mut local_results = Vec::new();
                     for (i, chunk) in buffer.chunks(scan_align_bytes).enumerate() {
+                        if chunk.len() < std::mem::size_of::<T>() {
+                            continue;
+                        }
+
                         let addr = start_addr + (i * scan_align_bytes) as u64;
 
                         for &value in &values_clone {
                             let matches = if TypeId::of::<T>() == TypeId::of::<f32>() || TypeId::of::<T>() == TypeId::of::<f64>() {
                                 if let Some(error_range) = error_range {
-                                    let error_range_t = T::from_f32(error_range).unwrap();
-                                    let lower_bound = value - error_range_t;
-                                    let upper_bound = value + error_range_t;
+                                    if let Some(error_range_t) = T::from_f32(error_range) {
+                                        let lower_bound = value - error_range_t;
+                                        let upper_bound = value + error_range_t;
 
-                                    try_from_bytes::<T>(chunk).map_or(false, |v| *v >= lower_bound && *v <= upper_bound)
+                                        try_from_bytes::<T>(chunk).map_or(false, |v| *v >= lower_bound && *v <= upper_bound)
+                                    } else {
+                                        false
+                                    }
                                 } else {
                                     try_from_bytes::<T>(chunk).map_or(false, |v| *v == value)
                                 }
@@ -982,252 +990,166 @@ pub unsafe extern "system" fn Java_com_yervant_huntgames_backend_HuntService_sea
     proximity: jlong,
     regions: JString<'a>,
 ) -> JLongArray<'a> {
-    let typ: String = env.get_string(&datatype).expect("Couldn't get Java string").into();
-    let procid: i32 = pid.try_into().unwrap();
-    let length = env.get_array_length(&values).unwrap();
-    let mut group_values = Vec::with_capacity(length as usize);
+    let create_empty_array = |env: &mut JNIEnv<'a>| env.new_long_array(0).unwrap();
 
+    let typ: String = match env.get_string(&datatype) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Couldn't get datatype string: {:?}", e);
+            return create_empty_array(&mut env);
+        }
+    };
+
+    let procid = match pid.try_into() {
+        Ok(id) => id,
+        Err(e) => {
+            error!("Invalid process ID: {:?}", e);
+            return create_empty_array(&mut env);
+        }
+    };
+
+    let length = match env.get_array_length(&values) {
+        Ok(len) => len,
+        Err(e) => {
+            error!("Couldn't get array length: {:?}", e);
+            return create_empty_array(&mut env);
+        }
+    };
+
+    let mut group_values = Vec::with_capacity(length as usize);
     for i in 0..length {
-        let obj = env.get_object_array_element(&values, i).unwrap();
-        let j_string = JString::from(obj);
-        let rust_string: String = env.get_string(&j_string).unwrap().into();
+        let obj = match env.get_object_array_element(&values, i) {
+            Ok(o) => o,
+            Err(e) => {
+                error!("Couldn't get array element {}: {:?}", i, e);
+                return create_empty_array(&mut env);
+            }
+        };
+        let rust_string = match env.get_string(&JString::from(obj)) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                error!("Couldn't convert array element {} to string: {:?}", i, e);
+                return create_empty_array(&mut env);
+            }
+        };
         group_values.push(rust_string);
     }
 
-    let regions_str: String = env.get_string(&regions).expect("Couldn't get Java string").into();
-
-    let out = env.new_long_array(0).unwrap();
+    let regions_str: String = match env.get_string(&regions) {
+        Ok(s) => String::from(s),
+        Err(e) => {
+            error!("Couldn't get regions string: {:?}", e);
+            return create_empty_array(&mut env);
+        }
+    };
 
     let device = match Device::new(DEFAULT_DRIVER_PATH) {
         Ok(dev) => Arc::new(dev),
         Err(e) => {
             error!("Failed to open device: {:?}", e);
-            return out;
+            return create_empty_array(&mut env);
         }
     };
 
-    let m_regions = regions_str
-        .split(',')
+    let m_regions = regions_str.split(',')
         .filter_map(|s| MemoryRegion::from_str(s))
         .collect::<Vec<_>>();
 
     let mut memory_sections = MemSearchSafeWorkSecWrapper::new();
-    memory_sections
-        .load_memory_sections(device.clone(), procid, m_regions)
-        .expect("Failed to load memory sections");
+    if let Err(e) = memory_sections.load_memory_sections(device.clone(), procid, m_regions) {
+        error!("Failed to load memory sections: {:?}", e);
+        return create_empty_array(&mut env);
+    }
 
     let num_values = group_values.len();
 
-    let result: Vec<jlong> = match typ.as_str() {
-        "int" => {
-            let values_parsed: Vec<i32> = group_values.iter().map(|v| v.parse().unwrap()).collect();
-            let force_stop_signal = Arc::new(AtomicBool::new(false));
-            let search_results = device.clone().search_group_values::<i32>(
-                procid,
-                Arc::new(Mutex::new(memory_sections)),
-                values_parsed.clone(),
-                Some(0.0001f32),
-                num_values,
-                std::mem::size_of::<i32>(),
-                force_stop_signal,
-            ).expect("Failed to search value");
+    fn process_values<T>(
+        group_values: &[String],
+        device: Arc<Device>,
+        procid: i32,
+        memory_sections: MemSearchSafeWorkSecWrapper,
+        num_values: usize,
+        proximity: u64,
+        value_size: usize,
+    ) -> Result<Vec<jlong>>
+    where
+        T: FromStr + Pod + Copy + PartialEq + Send + FromPrimitive + Add<Output = T> + Sub<Output = T> + PartialOrd + 'static,
+        T::Err: std::fmt::Debug,
+    {
+        let values_parsed: Result<Vec<T>> = group_values
+            .iter()
+            .map(|v| v.parse::<T>().map_err(|e| errors::Error::InvalidInput(format!("{:?}", e).parse().unwrap())))
+            .collect();
 
-            let mut valid_addresses = Vec::new();
+        let val_parsed: Vec<T> = values_parsed?;
 
-            for i in (0..search_results.len()).step_by(num_values) {
-                let mut group = Vec::new();
-                let mut is_valid_group = true;
+        let force_stop_signal = Arc::new(AtomicBool::new(false));
+        let search_results = device.clone().search_group_values::<T>(
+            procid,
+            Arc::new(Mutex::new(memory_sections)),
+            val_parsed.clone(),
+            Some(0.0001f32),
+            num_values,
+            value_size,
+            force_stop_signal,
+        )?;
 
-                for j in 0..num_values {
-                    let current_addr = search_results[i + j].addr;
+        let mut valid_addresses = Vec::new();
 
-                    if j > 0 && (current_addr - search_results[i + j - 1].addr) > proximity as u64 {
-                        is_valid_group = false;
-                        break;
-                    }
+        for chunk in search_results.chunks_exact(num_values) {
+            let is_valid_group = chunk
+                .windows(2)
+                .all(|w| (w[1].addr - w[0].addr) <= proximity);
 
-                    group.push(current_addr as jlong);
-                }
-
-                if is_valid_group && group.len() == num_values {
-                    let mut temp = Vec::new();
-                    for j in 0..group.len() {
-                        let mut buf = vec![0u8; 4];
-                        device.read_mem(procid, group[j] as u64, &mut buf).unwrap();
-                        let mem_value = i32::from_ne_bytes(buf.try_into().unwrap());
-
-                        if mem_value == values_parsed[j] {
-                            temp.push(group[j].clone());
-                        }
-                    }
-
-                    if temp.len() == num_values {
-                        valid_addresses.extend(group);
-                    }
-                }
+            if is_valid_group {
+                valid_addresses.extend(chunk.iter().map(|entry| entry.addr as jlong));
             }
-
-            valid_addresses
         }
-        "long" => {
-            let values_parsed: Vec<i64> = group_values.iter().map(|v| v.parse().unwrap()).collect();
-            let force_stop_signal = Arc::new(AtomicBool::new(false));
-            let search_results = device.clone().search_group_values::<i64>(
-                procid,
-                Arc::new(Mutex::new(memory_sections)),
-                values_parsed.clone(),
-                Some(0.0001f32),
-                num_values,
-                std::mem::size_of::<i64>(),
-                force_stop_signal,
-            ).expect("Failed to search value");
 
-            let mut valid_addresses = Vec::new();
+        Ok(valid_addresses)
+    }
 
-            for i in (0..search_results.len()).step_by(num_values) {
-                let mut group = Vec::new();
-                let mut is_valid_group = true;
-
-                for j in 0..num_values {
-                    let current_addr = search_results[i + j].addr;
-
-                    if j > 0 && (current_addr - search_results[i + j - 1].addr) > proximity as u64 {
-                        is_valid_group = false;
-                        break;
-                    }
-
-                    group.push(current_addr as jlong);
-                }
-
-                if is_valid_group && group.len() == num_values {
-                    let mut temp = Vec::new();
-                    for j in 0..group.len() {
-                        let mut buf = vec![0u8; 8];
-                        device.read_mem(procid, group[j] as u64, &mut buf).unwrap();
-                        let mem_value = i64::from_ne_bytes(buf.try_into().unwrap());
-
-                        if mem_value == values_parsed[j] {
-                            temp.push(group[j].clone());
-                        }
-                    }
-
-                    if temp.len() == num_values {
-                        valid_addresses.extend(group);
-                    }
-                }
-            }
-
-            valid_addresses
-        }
-        "float" => {
-            let values_parsed: Vec<f32> = group_values.iter().map(|v| v.parse().unwrap()).collect();
-            let force_stop_signal = Arc::new(AtomicBool::new(false));
-            let search_results = device.clone().search_group_values::<f32>(
-                procid,
-                Arc::new(Mutex::new(memory_sections)),
-                values_parsed.clone(),
-                Some(0.0001f32),
-                num_values,
-                std::mem::size_of::<f32>(),
-                force_stop_signal,
-            ).expect("Failed to search value");
-
-            let mut valid_addresses = Vec::new();
-
-            for i in (0..search_results.len()).step_by(num_values) {
-                let mut group = Vec::new();
-                let mut is_valid_group = true;
-
-                for j in 0..num_values {
-                    let current_addr = search_results[i + j].addr;
-
-                    if j > 0 && (current_addr - search_results[i + j - 1].addr) > proximity as u64 {
-                        is_valid_group = false;
-                        break;
-                    }
-
-                    group.push(current_addr as jlong);
-                }
-
-                if is_valid_group && group.len() == num_values {
-                    let mut temp = Vec::new();
-                    for j in 0..group.len() {
-                        let mut buf = vec![0u8; 4];
-                        device.read_mem(procid, group[j] as u64, &mut buf).unwrap();
-                        let mem_value = f32::from_ne_bytes(buf.try_into().unwrap());
-
-                        if mem_value == values_parsed[j] {
-                            temp.push(group[j].clone());
-                        }
-                    }
-
-                    if temp.len() == num_values {
-                        valid_addresses.extend(group);
-                    }
-                }
-            }
-
-            valid_addresses
-        }
-        "double" => {
-            let values_parsed: Vec<f64> = group_values.iter().map(|v| v.parse().unwrap()).collect();
-            let force_stop_signal = Arc::new(AtomicBool::new(false));
-            let search_results = device.clone().search_group_values::<f64>(
-                procid,
-                Arc::new(Mutex::new(memory_sections)),
-                values_parsed.clone(),
-                Some(0.0001f32),
-                num_values,
-                std::mem::size_of::<f64>(),
-                force_stop_signal,
-            ).expect("Failed to search value");
-
-            let mut valid_addresses = Vec::new();
-
-            for i in (0..search_results.len()).step_by(num_values) {
-                let mut group = Vec::new();
-                let mut is_valid_group = true;
-
-                for j in 0..num_values {
-                    let current_addr = search_results[i + j].addr;
-
-                    if j > 0 && (current_addr - search_results[i + j - 1].addr) > proximity as u64 {
-                        is_valid_group = false;
-                        break;
-                    }
-
-                    group.push(current_addr as jlong);
-                }
-
-                if is_valid_group && group.len() == num_values {
-                    let mut temp = Vec::new();
-                    for j in 0..group.len() {
-                        let mut buf = vec![0u8; 8];
-                        device.read_mem(procid, group[j] as u64, &mut buf).unwrap();
-                        let mem_value = f64::from_ne_bytes(buf.try_into().unwrap());
-
-                        if mem_value == values_parsed[j] {
-                            temp.push(group[j].clone());
-                        }
-                    }
-
-                    if temp.len() == num_values {
-                        valid_addresses.extend(group);
-                    }
-                }
-            }
-
-            valid_addresses
-        }
+    let result = match typ.as_str() {
+        "int" => process_values::<i32>(
+            &group_values, device.clone(), procid, memory_sections, num_values, proximity as u64, 4
+        ),
+        "long" => process_values::<i64>(
+            &group_values, device.clone(), procid, memory_sections, num_values, proximity as u64, 8
+        ),
+        "float" => process_values::<f32>(
+            &group_values, device.clone(), procid, memory_sections, num_values, proximity as u64, 4
+        ),
+        "double" => process_values::<f64>(
+            &group_values, device.clone(), procid, memory_sections, num_values, proximity as u64, 8
+        ),
         _ => {
-            error!("Unsupported datatype");
-            return out;
+            error!("Unsupported datatype: {}", typ);
+            return create_empty_array(&mut env);
         }
     };
 
-    let output = env.new_long_array(result.len() as i32).expect("Couldn't create new JLongArray");
-    env.set_long_array_region(&output, 0, &result).expect("Couldn't set JLongArray region");
-    output
+    match result {
+        Ok(addresses) => {
+            match env.new_long_array(addresses.len() as i32) {
+                Ok(output) => {
+                    if let Err(e) = env.set_long_array_region(&output, 0, &addresses) {
+                        error!("Couldn't set array region: {:?}", e);
+                        create_empty_array(&mut env)
+                    } else {
+                        output
+                    }
+                }
+                Err(e) => {
+                    error!("Couldn't create output array: {:?}", e);
+                    create_empty_array(&mut env)
+                }
+            }
+        }
+        Err(e) => {
+            error!("Error processing values: {:?}", e);
+            create_empty_array(&mut env)
+        }
+    }
 }
 
 #[no_mangle]
@@ -1349,123 +1271,196 @@ pub unsafe extern "system" fn Java_com_yervant_huntgames_backend_HuntService_fil
     values: JObjectArray<'a>,
     addresses: JLongArray<'a>,
 ) -> JLongArray<'a> {
-    let typ: String = env.get_string(&datatype).expect("Couldn't get Java string").into();
-    let procid: i32 = pid.try_into().unwrap();
 
-    let addresses_len = env.get_array_length(&addresses).unwrap();
+    let create_empty_array = |env: &mut JNIEnv<'a>| env.new_long_array(0).unwrap();
+
+    let typ = match env.get_string(&datatype) {
+        Ok(s) => String::from(s),
+        Err(e) => {
+            error!("Couldn't get datatype string: {:?}", e);
+            return create_empty_array(&mut env);
+        }
+    };
+
+    let procid: i32 = match pid.try_into() {
+        Ok(id) => id,
+        Err(e) => {
+            error!("Invalid process ID: {:?}", e);
+            return create_empty_array(&mut env);
+        }
+    };
+
+    let addresses_len = match env.get_array_length(&addresses) {
+        Ok(len) => len,
+        Err(e) => {
+            error!("Couldn't get addresses array length: {:?}", e);
+            return create_empty_array(&mut env);
+        }
+    };
+
     let mut addrs = vec![0 as jlong; addresses_len as usize];
-    env.get_long_array_region(&addresses, 0, &mut addrs).expect("Couldn't read addresses array");
-
-    let out = env.new_long_array(0).unwrap();
+    if let Err(e) = env.get_long_array_region(&addresses, 0, &mut addrs) {
+        error!("Couldn't read addresses array: {:?}", e);
+        return create_empty_array(&mut env);
+    }
 
     let device = match Device::new(DEFAULT_DRIVER_PATH) {
         Ok(dev) => Arc::new(dev),
         Err(e) => {
             error!("Failed to open device: {:?}", e);
-            return out;
+            return create_empty_array(&mut env);
         }
     };
 
-    let length = env.get_array_length(&values).unwrap();
-    let mut group_values = Vec::with_capacity(length as usize);
+    let length = match env.get_array_length(&values) {
+        Ok(len) => len,
+        Err(e) => {
+            error!("Couldn't get values array length: {:?}", e);
+            return create_empty_array(&mut env);
+        }
+    };
 
+    let mut group_values = Vec::with_capacity(length as usize);
     for i in 0..length {
-        let obj = env.get_object_array_element(&values, i).unwrap();
+        let obj = match env.get_object_array_element(&values, i) {
+            Ok(o) => o,
+            Err(e) => {
+                error!("Couldn't get array element {}: {:?}", i, e);
+                return create_empty_array(&mut env);
+            }
+        };
         let j_string = JString::from(obj);
-        let rust_string: String = env.get_string(&j_string).unwrap().into();
+        let rust_string = match env.get_string(&j_string) {
+            Ok(s) => String::from(s),
+            Err(e) => {
+                error!("Couldn't convert array element {} to string: {:?}", i, e);
+                return create_empty_array(&mut env);
+            }
+        };
         group_values.push(rust_string);
     }
 
     let result: Vec<jlong> = match typ.as_str() {
         "int" => {
             let values_parsed: Vec<i32> = group_values.iter()
-                .filter_map(|v| v.parse::<i32>().ok())
+                .filter_map(|v| v.parse().ok())
                 .collect();
 
-            addrs.iter().filter_map(|&addr| {
-                let mut buf = vec![0u8; 4];
-                if device.read_mem(procid, addr as u64, &mut buf).is_ok() {
-                    let value = i32::from_ne_bytes(buf.try_into().unwrap());
-                    if values_parsed.contains(&value) {
-                        Some(addr)
-                    } else {
-                        None
+            addrs.iter()
+                .filter_map(|&addr| {
+                    let mut buf = vec![0u8; 4];
+                    match device.read_mem(procid, addr as u64, &mut buf) {
+                        Ok(_) => {
+                            let value = i32::from_le_bytes(buf.try_into().unwrap());
+                            if values_parsed.contains(&value) {
+                                Some(addr)
+                            } else {
+                                None
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error reading memory at {}: {:?}", addr, e);
+                            None
+                        }
                     }
-                } else {
-                    error!("Error reading memory at: {}", addr);
-                    None
-                }
-            }).collect()
+                })
+                .collect()
         }
         "long" => {
             let values_parsed: Vec<i64> = group_values.iter()
-                .filter_map(|v| v.parse::<i64>().ok())
+                .filter_map(|v| v.parse().ok())
                 .collect();
 
-            addrs.iter().filter_map(|&addr| {
-                let mut buf = vec![0u8; 8];
-                if device.read_mem(procid, addr as u64, &mut buf).is_ok() {
-                    let value = i64::from_ne_bytes(buf.try_into().unwrap());
-                    if values_parsed.contains(&value) {
-                        Some(addr)
-                    } else {
-                        None
+            addrs.iter()
+                .filter_map(|&addr| {
+                    let mut buf = vec![0u8; 8];
+                    match device.read_mem(procid, addr as u64, &mut buf) {
+                        Ok(_) => {
+                            let value = i64::from_le_bytes(buf.try_into().unwrap());
+                            if values_parsed.contains(&value) {
+                                Some(addr)
+                            } else {
+                                None
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error reading memory at {}: {:?}", addr, e);
+                            None
+                        }
                     }
-                } else {
-                    error!("Error reading memory at: {}", addr);
-                    None
-                }
-            }).collect()
+                })
+                .collect()
         }
         "float" => {
             let values_parsed: Vec<f32> = group_values.iter()
-                .filter_map(|v| v.parse::<f32>().ok())
+                .filter_map(|v| v.parse().ok())
                 .collect();
             let error_margin: f32 = 0.0001;
 
-            addrs.iter().filter_map(|&addr| {
-                let mut buf = vec![0u8; 4];
-                if device.read_mem(procid, addr as u64, &mut buf).is_ok() {
-                    let value = f32::from_ne_bytes(buf.try_into().unwrap());
-                    if values_parsed.iter().any(|&v| (v - value).abs() <= error_margin) {
-                        Some(addr)
-                    } else {
-                        None
+            addrs.iter()
+                .filter_map(|&addr| {
+                    let mut buf = vec![0u8; 4];
+                    match device.read_mem(procid, addr as u64, &mut buf) {
+                        Ok(_) => {
+                            let value = f32::from_le_bytes(buf.try_into().unwrap());
+                            if values_parsed.iter().any(|&v| (v - value).abs() <= error_margin) {
+                                Some(addr)
+                            } else {
+                                None
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error reading memory at {}: {:?}", addr, e);
+                            None
+                        }
                     }
-                } else {
-                    error!("Error reading memory at: {}", addr);
-                    None
-                }
-            }).collect()
+                })
+                .collect()
         }
         "double" => {
             let values_parsed: Vec<f64> = group_values.iter()
-                .filter_map(|v| v.parse::<f64>().ok())
+                .filter_map(|v| v.parse().ok())
                 .collect();
             let error_margin: f64 = 0.0001;
 
-            addrs.iter().filter_map(|&addr| {
-                let mut buf = vec![0u8; 8];
-                if device.read_mem(procid, addr as u64, &mut buf).is_ok() {
-                    let value = f64::from_ne_bytes(buf.try_into().unwrap());
-                    if values_parsed.iter().any(|&v| (v - value).abs() <= error_margin) {
-                        Some(addr)
-                    } else {
-                        None
+            addrs.iter()
+                .filter_map(|&addr| {
+                    let mut buf = vec![0u8; 8];
+                    match device.read_mem(procid, addr as u64, &mut buf) {
+                        Ok(_) => {
+                            let value = f64::from_le_bytes(buf.try_into().unwrap());
+                            if values_parsed.iter().any(|&v| (v - value).abs() <= error_margin) {
+                                Some(addr)
+                            } else {
+                                None
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error reading memory at {}: {:?}", addr, e);
+                            None
+                        }
                     }
-                } else {
-                    error!("Error reading memory at: {}", addr);
-                    None
-                }
-            }).collect()
+                })
+                .collect()
         }
         _ => {
-            error!("Unsupported datatype");
-            return out;
+            error!("Unsupported datatype: {}", typ);
+            return create_empty_array(&mut env);
         }
     };
 
-    let output = env.new_long_array(result.len() as i32).expect("Couldn't create new JLongArray");
-    env.set_long_array_region(&output, 0, &result).expect("Couldn't set JLongArray region");
-    output
+    match env.new_long_array(result.len() as i32) {
+        Ok(output) => {
+            if let Err(e) = env.set_long_array_region(&output, 0, &result) {
+                error!("Couldn't set array region: {:?}", e);
+                create_empty_array(&mut env)
+            } else {
+                output
+            }
+        }
+        Err(e) => {
+            error!("Couldn't create output array: {:?}", e);
+            create_empty_array(&mut env)
+        }
+    }
 }

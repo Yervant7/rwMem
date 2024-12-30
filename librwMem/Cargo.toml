@@ -1,6 +1,6 @@
 [package]
 name = "rwmem"
-version = "0.5.6"
+version = "0.6.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -13,11 +13,11 @@ nix = { version = "0.29.0", features = ["ioctl", "fs"] }
 libc = "0.2"
 byteorder = "1.5"
 bitvec = "1"
-thiserror = "1"
-rayon = "1.10.0"
+thiserror = "2.0.9"
 jni = "0.21.1"
 android_logger = "0.14.1"
 log = "0.4"
 bytemuck = "1.19.0"
 num-traits = "0.2"
+anyhow = "1.0.95"
 
